@@ -870,7 +870,7 @@
 
 .history-modal {
   text-align: left;
-  max-height: min(80svh, 560px);
+  max-height: min(85svh, 640px);
   display: flex;
   flex-direction: column;
 }
@@ -891,6 +891,8 @@
   margin: 0 0 12px;
   padding: 0;
   overflow: auto;
+  flex: 1 1 auto;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1127,14 +1129,15 @@
 .rank-list {
   list-style: none;
   margin: 0 0 14px;
-  padding: 0;
+  padding: 4px;
   overflow: auto;
+  flex: 1 1 auto;
+  min-height: 140px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   border-radius: 14px;
   background: #f7f7f7;
-  padding: 4px;
 }
 
 .rank-item {

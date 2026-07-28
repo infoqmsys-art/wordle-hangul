@@ -44,6 +44,7 @@ export function RankingModal({
   useEffect(() => {
     if (!open) return
     setTab(initialDifficulty)
+    setMode('wins')
   }, [open, initialDifficulty])
 
   useEffect(() => {
@@ -51,9 +52,9 @@ export function RankingModal({
     let alive = true
     setLoading(true)
     setError(null)
+    setRanking([])
 
     if (!isSharedHistoryEnabled()) {
-      setRanking([])
       setError('공유 기록이 아직 연결되지 않았어요')
       setLoading(false)
       return
@@ -61,10 +62,14 @@ export function RankingModal({
 
     loadRanking(tab, mode)
       .then((list) => {
-        if (alive) setRanking(list)
+        if (!alive) return
+        setRanking(list)
+        setError(null)
       })
       .catch(() => {
-        if (alive) setError('랭킹을 불러오지 못했어요')
+        if (!alive) return
+        setRanking([])
+        setError('랭킹을 불러오지 못했어요')
       })
       .finally(() => {
         if (alive) setLoading(false)

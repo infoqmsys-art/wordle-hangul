@@ -43,6 +43,10 @@ export function isSharedHistoryEnabled(): boolean {
   return isFirebaseConfigured()
 }
 
+function isWon(value: unknown): boolean {
+  return value === true || value === 1 || value === 'true' || value === '1'
+}
+
 function parseRecord(id: string, data: Record<string, unknown>): HistoryRecord {
   const wordLength = Number(data.wordLength ?? 5)
   const difficulty = (
@@ -55,7 +59,7 @@ function parseRecord(id: string, data: Record<string, unknown>): HistoryRecord {
     seconds: Number(data.seconds ?? 0),
     attempts: Number(data.attempts ?? 0),
     maxAttempts: Number(data.maxAttempts ?? 5),
-    won: Boolean(data.won),
+    won: isWon(data.won),
     dateKey: String(data.dateKey ?? ''),
     savedAt: Number(data.savedAt ?? Date.now()),
     difficulty,
@@ -84,14 +88,23 @@ type Agg = {
   bestAttemptsSeconds: number
 }
 
+async function fetchRecordsSnap() {
+  try {
+    return await getDocs(
+      query(
+        collection(getDb(), COLLECTION),
+        orderBy('savedAt', 'desc'),
+        limit(1000),
+      ),
+    )
+  } catch {
+    // savedAt 인덱스가 없거나 일부 문서에 필드가 없어도 랭킹은 보이게
+    return await getDocs(query(collection(getDb(), COLLECTION), limit(1000)))
+  }
+}
+
 async function loadWinRecords(difficulty: Difficulty): Promise<Agg[]> {
-  const snap = await getDocs(
-    query(
-      collection(getDb(), COLLECTION),
-      orderBy('savedAt', 'desc'),
-      limit(1000),
-    ),
-  )
+  const snap = await fetchRecordsSnap()
 
   const map = new Map<string, Agg>()
   for (const d of snap.docs) {
