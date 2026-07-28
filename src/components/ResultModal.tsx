@@ -52,6 +52,7 @@ export function ResultModal({
   const [saved, setSaved] = useState(recordSaved)
   const [savedName, setSavedName] = useState(getLastName)
   const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -67,25 +68,33 @@ export function ResultModal({
 
   const won = status === 'won'
 
-  const save = () => {
+  const save = async () => {
     const trimmed = name.trim()
     if (!trimmed) {
       setError('본인 이름을 적어주세요~')
       return
     }
     const finalName = trimmed.slice(0, 20)
-    saveHistoryRecord({
-      name: finalName,
-      word: answerWord,
-      seconds,
-      attempts: rows.length,
-      maxAttempts: MAX_ATTEMPTS,
-      won,
-      dateKey,
-    })
-    setSaved(true)
-    setSavedName(finalName)
-    onRecordSaved()
+    setSaving(true)
+    setError(null)
+    try {
+      await saveHistoryRecord({
+        name: finalName,
+        word: answerWord,
+        seconds,
+        attempts: rows.length,
+        maxAttempts: MAX_ATTEMPTS,
+        won,
+        dateKey,
+      })
+      setSaved(true)
+      setSavedName(finalName)
+      onRecordSaved()
+    } catch {
+      setError('기록 저장에 실패했어요. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const share = async () => {
@@ -150,8 +159,13 @@ export function ResultModal({
                 }}
               />
               {error && <p className="name-error">{error}</p>}
-              <button type="button" className="result-save-btn" onClick={save}>
-                이름 저장
+              <button
+                type="button"
+                className="result-save-btn"
+                onClick={save}
+                disabled={saving}
+              >
+                {saving ? '저장 중...' : '이름 저장'}
               </button>
             </div>
           ) : (

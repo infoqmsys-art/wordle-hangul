@@ -1,3 +1,14 @@
+import {
+  addDoc,
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+} from 'firebase/firestore'
+import { getDb, isFirebaseConfigured } from './firebase'
+
 export type HistoryRecord = {
   id: string
   name: string
@@ -10,31 +21,73 @@ export type HistoryRecord = {
   savedAt: number
 }
 
-const HISTORY_KEY = 'wordle-hangul-history-v1'
 const LAST_NAME_KEY = 'wordle-hangul-last-name'
 const MAX_RECORDS = 100
+const COLLECTION = 'records'
 
-export function loadHistory(): HistoryRecord[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY)
-    if (!raw) return []
-    const list = JSON.parse(raw) as HistoryRecord[]
-    return Array.isArray(list) ? list : []
-  } catch {
-    return []
-  }
+export function isSharedHistoryEnabled(): boolean {
+  return isFirebaseConfigured()
 }
 
-export function saveHistoryRecord(record: Omit<HistoryRecord, 'id' | 'savedAt'>): HistoryRecord {
-  const next: HistoryRecord = {
-    ...record,
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    savedAt: Date.now(),
+export async function loadHistory(): Promise<HistoryRecord[]> {
+  if (!isFirebaseConfigured()) return []
+
+  const q = query(
+    collection(getDb(), COLLECTION),
+    orderBy('savedAt', 'desc'),
+    limit(MAX_RECORDS),
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map((doc) => {
+    const data = doc.data()
+    return {
+      id: doc.id,
+      name: String(data.name ?? ''),
+      word: String(data.word ?? ''),
+      seconds: Number(data.seconds ?? 0),
+      attempts: Number(data.attempts ?? 0),
+      maxAttempts: Number(data.maxAttempts ?? 5),
+      won: Boolean(data.won),
+      dateKey: String(data.dateKey ?? ''),
+      savedAt: Number(data.savedAt ?? Date.now()),
+    }
+  })
+}
+
+export async function saveHistoryRecord(
+  record: Omit<HistoryRecord, 'id' | 'savedAt'>,
+): Promise<HistoryRecord> {
+  if (!isFirebaseConfigured()) {
+    throw new Error('공유 기록이 아직 설정되지 않았어요')
   }
-  const list = [next, ...loadHistory()].slice(0, MAX_RECORDS)
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(list))
-  localStorage.setItem(LAST_NAME_KEY, record.name)
-  return next
+
+  const savedAt = Date.now()
+  const payload = {
+    name: record.name.trim().slice(0, 20),
+    word: record.word,
+    seconds: Math.max(0, Math.round(record.seconds)),
+    attempts: record.attempts,
+    maxAttempts: record.maxAttempts,
+    won: record.won,
+    dateKey: record.dateKey,
+    savedAt,
+    createdAt: serverTimestamp(),
+  }
+
+  const ref = await addDoc(collection(getDb(), COLLECTION), payload)
+  localStorage.setItem(LAST_NAME_KEY, payload.name)
+
+  return {
+    id: ref.id,
+    name: payload.name,
+    word: payload.word,
+    seconds: payload.seconds,
+    attempts: payload.attempts,
+    maxAttempts: payload.maxAttempts,
+    won: payload.won,
+    dateKey: payload.dateKey,
+    savedAt,
+  }
 }
 
 export function getLastName(): string {

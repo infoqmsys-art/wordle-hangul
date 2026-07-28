@@ -1,4 +1,11 @@
-import { formatRecordDate, formatSeconds, loadHistory, type HistoryRecord } from '../lib/history'
+import { useEffect, useState } from 'react'
+import {
+  formatRecordDate,
+  formatSeconds,
+  isSharedHistoryEnabled,
+  loadHistory,
+  type HistoryRecord,
+} from '../lib/history'
 
 type Props = {
   open: boolean
@@ -6,9 +13,43 @@ type Props = {
 }
 
 export function HistoryModal({ open, onClose }: Props) {
-  if (!open) return null
+  const [records, setRecords] = useState<HistoryRecord[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const records: HistoryRecord[] = loadHistory()
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    setLoading(true)
+    setError(null)
+
+    if (!isSharedHistoryEnabled()) {
+      setRecords([])
+      setError('공유 기록이 아직 연결되지 않았어요. Firebase 설정이 필요해요.')
+      setLoading(false)
+      return
+    }
+
+    loadHistory()
+      .then((list) => {
+        if (!alive) return
+        setRecords(list)
+      })
+      .catch(() => {
+        if (!alive) return
+        setError('기록을 불러오지 못했어요')
+      })
+      .finally(() => {
+        if (!alive) return
+        setLoading(false)
+      })
+
+    return () => {
+      alive = false
+    }
+  }, [open])
+
+  if (!open) return null
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -20,9 +61,13 @@ export function HistoryModal({ open, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="history-title">기록</h2>
-        <p className="modal-sub">이 기기에 저장된 플레이 기록이에요</p>
+        <p className="modal-sub">모든 플레이어의 기록이 여기에 모여요</p>
 
-        {records.length === 0 ? (
+        {loading ? (
+          <p className="history-empty">불러오는 중...</p>
+        ) : error ? (
+          <p className="history-empty">{error}</p>
+        ) : records.length === 0 ? (
           <p className="history-empty">아직 기록이 없어요</p>
         ) : (
           <ul className="history-list">
@@ -38,7 +83,9 @@ export function HistoryModal({ open, onClose }: Props) {
                   <span>단어 「{r.word}」</span>
                   <span>{formatSeconds(r.seconds)}</span>
                   <span>
-                    {r.won ? `${r.attempts}/${r.maxAttempts}회` : `${r.maxAttempts}회 실패`}
+                    {r.won
+                      ? `${r.attempts}/${r.maxAttempts}회`
+                      : `${r.maxAttempts}회 실패`}
                   </span>
                 </div>
                 <div className="history-date">{formatRecordDate(r.savedAt)}</div>

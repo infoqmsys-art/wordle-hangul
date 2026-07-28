@@ -115,11 +115,9 @@ function App() {
         />
 
         <div className="hint-bar">
-          <span className="hint-pill">자모 5칸</span>
           <span className="hint-pill soft">
             기회 {MAX_ATTEMPTS - game.attemptsUsed}/{MAX_ATTEMPTS}
           </span>
-          <span className="hint-pill soft">사전 {game.guessCount.toLocaleString()}어</span>
         </div>
 
         {finished ? (
