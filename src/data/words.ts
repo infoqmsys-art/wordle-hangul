@@ -63,3 +63,15 @@ export function findWordByJamo(
 export function getAnswerByIndex(dict: Dictionary, index: number): WordEntry {
   return dict.answers[index % dict.answers.length]
 }
+
+/** 최근 나온 단어를 피해서 랜덤 정답 선택 */
+export function pickRandomAnswer(
+  dict: Dictionary,
+  avoidWords: string[] = [],
+): WordEntry {
+  const avoid = new Set(avoidWords)
+  const pool = dict.answers.filter((a) => !avoid.has(a.word))
+  const source = pool.length > 0 ? pool : dict.answers
+  const idx = Math.floor(Math.random() * source.length)
+  return source[idx]
+}

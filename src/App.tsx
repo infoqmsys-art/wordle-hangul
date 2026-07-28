@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Board } from './components/Board'
+import { HistoryModal } from './components/HistoryModal'
 import { HowTo } from './components/HowTo'
 import { Keyboard } from './components/Keyboard'
 import { ResultModal } from './components/ResultModal'
 import { useGame, MAX_ATTEMPTS } from './hooks/useGame'
+import { formatSeconds } from './lib/history'
 import './App.css'
 
 function App() {
   const game = useGame()
   const [howto, setHowto] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -79,15 +82,24 @@ function App() {
             >
               게임 방법
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setHistoryOpen(true)
+                setMenuOpen(false)
+              }}
+            >
+              기록 보기
+            </button>
             {finished && (
               <button
                 type="button"
                 onClick={() => {
-                  game.setShowResult(true)
+                  game.nextRound()
                   setMenuOpen(false)
                 }}
               >
-                결과 보기
+                다음 문제 풀기
               </button>
             )}
           </div>
@@ -110,29 +122,60 @@ function App() {
           <span className="hint-pill soft">사전 {game.guessCount.toLocaleString()}어</span>
         </div>
 
-        <Keyboard
-          keyStatuses={game.keyStatuses}
-          onKey={game.onKey}
-          disabled={game.revealingRow !== null}
-        />
-
         {finished ? (
-          <button
-            type="button"
-            className="cta"
-            onClick={() => game.setShowResult(true)}
-          >
-            결과보기
-          </button>
+          <>
+            <div className={`finish-card ${game.status === 'won' ? 'is-win' : 'is-lose'}`}>
+              <p className="finish-answer-line">
+                정답은 <span>{game.answerWord}</span>
+              </p>
+              <p className="finish-jamo">{game.answerJamo.join(' · ')}</p>
+              <p className="finish-meta">
+                {game.status === 'won' ? '성공' : '실패'}
+                {' · '}
+                {game.status === 'won'
+                  ? `${game.attemptsUsed}/${MAX_ATTEMPTS}번`
+                  : `${MAX_ATTEMPTS}번 실패`}
+                {' · '}
+                {formatSeconds(game.seconds)}
+              </p>
+              {game.definition && (
+                <p className="finish-def">{game.definition}</p>
+              )}
+            </div>
+
+            <div className="finish-actions">
+              <button
+                type="button"
+                className="cta cta-secondary"
+                onClick={() => game.setShowResult(true)}
+              >
+                결과보기
+              </button>
+              <button
+                type="button"
+                className="cta"
+                onClick={() => game.nextRound()}
+              >
+                다음 문제 풀기
+              </button>
+            </div>
+          </>
         ) : (
-          <button
-            type="button"
-            className="cta"
-            onClick={() => game.onKey('Enter')}
-            disabled={game.revealingRow !== null}
-          >
-            입력
-          </button>
+          <>
+            <Keyboard
+              keyStatuses={game.keyStatuses}
+              onKey={game.onKey}
+              disabled={game.revealingRow !== null}
+            />
+            <button
+              type="button"
+              className="cta"
+              onClick={() => game.onKey('Enter')}
+              disabled={game.revealingRow !== null}
+            >
+              입력
+            </button>
+          </>
         )}
       </main>
 
@@ -144,6 +187,7 @@ function App() {
         guessCount={game.guessCount}
         answerCount={game.answerCount}
       />
+      <HistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} />
       <ResultModal
         open={game.showResult}
         status={game.status}
@@ -151,6 +195,12 @@ function App() {
         answerJamo={game.answerJamo}
         definition={game.definition}
         rows={game.rows}
+        seconds={game.seconds}
+        dateKey={game.dateKey}
+        recordSaved={game.recordSaved}
+        onRecordSaved={game.markRecordSaved}
+        onNextRound={game.nextRound}
+        onOpenHistory={() => setHistoryOpen(true)}
         onClose={() => game.setShowResult(false)}
       />
     </div>

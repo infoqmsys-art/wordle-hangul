@@ -24,7 +24,10 @@ export function HowTo({ open, onClose, guessCount = 0, answerCount = 0 }: Props)
             <strong>ㅔ</strong>처럼 합쳐진 모음은 <strong>ㅓ + ㅣ</strong>로
             나눠 입력해요.
           </li>
-          <li>기회는 하루 <strong>5번</strong>이에요.</li>
+          <li>기회는 한 문제당 <strong>5번</strong>이에요.</li>
+          <li>
+            끝날 때마다 <strong>다른 문제</strong>를 이어서 풀 수 있어요.
+          </li>
           <li>
             추측은 사전 명사로 넓게 받고, 정답은{' '}
             <strong>익숙한 일상 단어</strong>만 나와요

@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   findWordByJamo,
-  getAnswerByIndex,
   isValidGuess,
   loadDictionary,
+  pickRandomAnswer,
   type Dictionary,
   type WordEntry,
 } from '../data/words'
 import {
-  dailyIndex,
   evaluateGuess,
   formatDateKey,
   mergeKeyStatus,
@@ -27,27 +26,71 @@ export type Row = {
 }
 
 type Persisted = {
-  dateKey: string
+  answerWord: string
+  answerJamo: string[]
   guesses: string[][]
   status: 'playing' | 'won' | 'lost'
+  startedAt: number | null
+  finishedAt: number | null
+  recordSaved: boolean
 }
 
-const STORAGE_KEY = 'wordle-hangul-daily-v2'
+const SESSION_KEY = 'wordle-hangul-session-v4'
+const RECENT_KEY = 'wordle-hangul-recent-v4'
+const RECENT_LIMIT = 40
 
-function loadPersisted(dateKey: string): Persisted | null {
+function loadSession(): Persisted | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(SESSION_KEY)
     if (!raw) return null
-    const data = JSON.parse(raw) as Persisted
-    if (data.dateKey !== dateKey) return null
-    return data
+    return JSON.parse(raw) as Persisted
   } catch {
     return null
   }
 }
 
-function savePersisted(data: Persisted) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+function saveSession(data: Persisted) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(data))
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY)
+}
+
+function loadRecentWords(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY)
+    if (!raw) return []
+    const list = JSON.parse(raw) as string[]
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+function pushRecentWord(word: string) {
+  const next = [word, ...loadRecentWords().filter((w) => w !== word)].slice(
+    0,
+    RECENT_LIMIT,
+  )
+  localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+}
+
+function restoreRows(guesses: string[][], answerJamo: string[]): Row[] {
+  return guesses.map((guess) => ({
+    jamo: guess,
+    statuses: evaluateGuess(guess, answerJamo),
+  }))
+}
+
+function buildKeyStatuses(rows: Row[]): Record<string, KeyStatus> {
+  const map: Record<string, KeyStatus> = {}
+  for (const row of rows) {
+    row.jamo.forEach((ch, i) => {
+      map[ch] = mergeKeyStatus(map[ch] ?? 'unused', row.statuses[i])
+    })
+  }
+  return map
 }
 
 export function useGame() {
@@ -64,38 +107,58 @@ export function useGame() {
   const [showResult, setShowResult] = useState(false)
   const [definition, setDefinition] = useState<string | null>(null)
   const [keyStatuses, setKeyStatuses] = useState<Record<string, KeyStatus>>({})
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [finishedAt, setFinishedAt] = useState<number | null>(null)
+  const [recordSaved, setRecordSaved] = useState(false)
+
+  const applyRound = useCallback((answer: WordEntry, saved?: Persisted | null) => {
+    if (saved && saved.answerWord === answer.word) {
+      const restored = restoreRows(saved.guesses, answer.jamo)
+      setAnswerEntry(answer)
+      setRows(restored)
+      setStatus(saved.status)
+      setKeyStatuses(buildKeyStatuses(restored))
+      setStartedAt(saved.startedAt)
+      setFinishedAt(saved.finishedAt)
+      setRecordSaved(saved.recordSaved)
+      setCurrent([])
+      setDefinition(null)
+      setShowResult(saved.status !== 'playing')
+      return
+    }
+
+    setAnswerEntry(answer)
+    setRows([])
+    setCurrent([])
+    setStatus('playing')
+    setKeyStatuses({})
+    setStartedAt(null)
+    setFinishedAt(null)
+    setRecordSaved(false)
+    setDefinition(null)
+    setShowResult(false)
+    setRevealingRow(null)
+  }, [])
 
   useEffect(() => {
     let alive = true
     loadDictionary()
       .then((loaded) => {
         if (!alive) return
-        const answer = getAnswerByIndex(
-          loaded,
-          dailyIndex(loaded.answers.length),
-        )
-        const saved = loadPersisted(dateKey)
-        const restoredRows =
-          saved?.guesses.map((guess) => ({
-            jamo: guess,
-            statuses: evaluateGuess(guess, answer.jamo),
-          })) ?? []
-
-        const map: Record<string, KeyStatus> = {}
-        for (const row of restoredRows) {
-          row.jamo.forEach((ch, i) => {
-            map[ch] = mergeKeyStatus(map[ch] ?? 'unused', row.statuses[i])
-          })
-        }
-
         setDict(loaded)
-        setAnswerEntry(answer)
-        setRows(restoredRows)
-        setStatus(saved?.status ?? 'playing')
-        setKeyStatuses(map)
-        if (saved?.status && saved.status !== 'playing') {
-          setShowResult(true)
+
+        const saved = loadSession()
+        if (saved?.answerWord && saved.answerJamo?.length === WORD_LENGTH) {
+          const fromSaved: WordEntry = {
+            word: saved.answerWord,
+            jamo: saved.answerJamo,
+          }
+          applyRound(fromSaved, saved)
+          return
         }
+
+        const answer = pickRandomAnswer(loaded, loadRecentWords())
+        applyRound(answer)
       })
       .catch((err: unknown) => {
         if (!alive) return
@@ -104,17 +167,33 @@ export function useGame() {
     return () => {
       alive = false
     }
-  }, [dateKey])
+  }, [applyRound])
 
   useEffect(() => {
     if (!answerEntry) return
-    if (rows.length === 0 && status === 'playing') return
-    savePersisted({
-      dateKey,
+    if (rows.length === 0 && status === 'playing' && !startedAt) {
+      // 새 라운드 시작 직후엔 세션을 비워 두지 않고 현재 정답만 저장
+      saveSession({
+        answerWord: answerEntry.word,
+        answerJamo: answerEntry.jamo,
+        guesses: [],
+        status: 'playing',
+        startedAt: null,
+        finishedAt: null,
+        recordSaved: false,
+      })
+      return
+    }
+    saveSession({
+      answerWord: answerEntry.word,
+      answerJamo: answerEntry.jamo,
       guesses: rows.map((r) => r.jamo),
       status,
+      startedAt,
+      finishedAt,
+      recordSaved,
     })
-  }, [rows, status, dateKey, answerEntry])
+  }, [rows, status, answerEntry, startedAt, finishedAt, recordSaved])
 
   useEffect(() => {
     if (!answerEntry || (status !== 'won' && status !== 'lost')) return
@@ -135,6 +214,31 @@ export function useGame() {
 
   const locked =
     !dict || !answerEntry || status !== 'playing' || revealingRow !== null
+
+  const ensureTimer = useCallback(() => {
+    setStartedAt((prev) => prev ?? Date.now())
+  }, [])
+
+  const finishGame = useCallback(
+    (next: 'won' | 'lost', message: string, word: string) => {
+      const now = Date.now()
+      setFinishedAt(now)
+      setStatus(next)
+      pushRecentWord(word)
+      showToast(message)
+      window.setTimeout(() => setShowResult(true), 400)
+    },
+    [showToast],
+  )
+
+  const nextRound = useCallback(() => {
+    if (!dict) return
+    clearSession()
+    const recent = loadRecentWords()
+    const answer = pickRandomAnswer(dict, recent)
+    applyRound(answer)
+    showToast('다음 문제!')
+  }, [dict, applyRound, showToast])
 
   const onKey = useCallback(
     (key: string) => {
@@ -161,6 +265,7 @@ export function useGame() {
         const nextRow: Row = { jamo: [...current], statuses }
         const rowIndex = rows.length
         const won = statuses.every((s) => s === 'correct')
+        const word = answerEntry.word
 
         setRows((prev) => [...prev, nextRow])
         setKeyStatuses((prev) => {
@@ -176,13 +281,9 @@ export function useGame() {
         window.setTimeout(() => {
           setRevealingRow(null)
           if (won) {
-            setStatus('won')
-            showToast('정답!')
-            window.setTimeout(() => setShowResult(true), 400)
+            finishGame('won', '정답!', word)
           } else if (rowIndex + 1 >= MAX_ATTEMPTS) {
-            setStatus('lost')
-            showToast(`정답은 ${answerEntry.word}`)
-            window.setTimeout(() => setShowResult(true), 400)
+            finishGame('lost', `정답은 ${word}`, word)
           }
         }, 180 * WORD_LENGTH + 120)
         return
@@ -190,6 +291,7 @@ export function useGame() {
 
       const parts = normalizeInput(key)
       if (parts.length === 0) return
+      ensureTimer()
       setCurrent((prev) => {
         const next = [...prev]
         for (const part of parts) {
@@ -207,6 +309,8 @@ export function useGame() {
       rows.length,
       showToast,
       triggerShake,
+      ensureTimer,
+      finishGame,
     ],
   )
 
@@ -235,6 +339,15 @@ export function useGame() {
     ? findWordByJamo(dict!, answerEntry.jamo) ?? answerEntry.word
     : ''
 
+  const seconds =
+    startedAt == null
+      ? 0
+      : Math.max(0, ((finishedAt ?? Date.now()) - startedAt) / 1000)
+
+  const markRecordSaved = useCallback(() => {
+    setRecordSaved(true)
+  }, [])
+
   return {
     ready: Boolean(dict && answerEntry),
     dictError,
@@ -255,5 +368,10 @@ export function useGame() {
     definition,
     onKey,
     attemptsUsed: rows.length,
+    seconds,
+    dateKey,
+    recordSaved,
+    markRecordSaved,
+    nextRound,
   }
 }
