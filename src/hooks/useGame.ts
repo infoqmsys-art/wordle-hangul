@@ -397,6 +397,18 @@ export function useGame() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return
+
+      const target = e.target
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.closest('input, textarea, [contenteditable="true"]'))
+      ) {
+        return
+      }
+
       if (e.key === 'Backspace') {
         e.preventDefault()
         onKey('Backspace')
