@@ -1,15 +1,11 @@
 import {
   addDoc,
   collection,
-  doc,
   getDocs,
-  increment,
   limit,
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
-  where,
 } from 'firebase/firestore'
 import type { Difficulty } from '../data/words'
 import { getDb, isFirebaseConfigured } from './firebase'
@@ -28,8 +24,13 @@ export type HistoryRecord = {
   wordLength: number
 }
 
+export type RankMode = 'wins' | 'fastest' | 'attempts'
+
 export type RankEntry = {
   name: string
+  /** 표시용 점수 숫자 (승수 / 초 / 시도) */
+  score: number
+  scoreLabel: string
   wins: number
   lastSavedAt: number
 }
@@ -37,10 +38,29 @@ export type RankEntry = {
 const LAST_NAME_KEY = 'wordle-hangul-last-name'
 const MAX_RECORDS = 200
 const COLLECTION = 'records'
-const RANK_COLLECTION = 'rankStats'
 
 export function isSharedHistoryEnabled(): boolean {
   return isFirebaseConfigured()
+}
+
+function parseRecord(id: string, data: Record<string, unknown>): HistoryRecord {
+  const wordLength = Number(data.wordLength ?? 5)
+  const difficulty = (
+    data.difficulty === 'hard' || wordLength === 7 ? 'hard' : 'easy'
+  ) as Difficulty
+  return {
+    id,
+    name: String(data.name ?? ''),
+    word: String(data.word ?? ''),
+    seconds: Number(data.seconds ?? 0),
+    attempts: Number(data.attempts ?? 0),
+    maxAttempts: Number(data.maxAttempts ?? 5),
+    won: Boolean(data.won),
+    dateKey: String(data.dateKey ?? ''),
+    savedAt: Number(data.savedAt ?? Date.now()),
+    difficulty,
+    wordLength,
+  }
 }
 
 export async function loadHistory(): Promise<HistoryRecord[]> {
@@ -52,70 +72,123 @@ export async function loadHistory(): Promise<HistoryRecord[]> {
     limit(MAX_RECORDS),
   )
   const snap = await getDocs(q)
-  return snap.docs.map((d) => {
-    const data = d.data()
-    const wordLength = Number(data.wordLength ?? 5)
-    return {
-      id: d.id,
-      name: String(data.name ?? ''),
-      word: String(data.word ?? ''),
-      seconds: Number(data.seconds ?? 0),
-      attempts: Number(data.attempts ?? 0),
-      maxAttempts: Number(data.maxAttempts ?? 5),
-      won: Boolean(data.won),
-      dateKey: String(data.dateKey ?? ''),
-      savedAt: Number(data.savedAt ?? Date.now()),
-      difficulty: (data.difficulty === 'hard' || wordLength === 7
-        ? 'hard'
-        : 'easy') as Difficulty,
-      wordLength,
-    }
-  })
+  return snap.docs.map((d) => parseRecord(d.id, d.data() as Record<string, unknown>))
 }
 
-export async function loadRanking(difficulty: Difficulty): Promise<RankEntry[]> {
-  if (!isFirebaseConfigured()) return []
+type Agg = {
+  name: string
+  wins: number
+  lastSavedAt: number
+  bestSeconds: number
+  bestAttempts: number
+  bestAttemptsSeconds: number
+}
 
-  const q = query(
-    collection(getDb(), RANK_COLLECTION),
-    where('difficulty', '==', difficulty),
-    orderBy('wins', 'desc'),
-    limit(50),
+async function loadWinRecords(difficulty: Difficulty): Promise<Agg[]> {
+  const snap = await getDocs(
+    query(
+      collection(getDb(), COLLECTION),
+      orderBy('savedAt', 'desc'),
+      limit(1000),
+    ),
   )
 
-  try {
-    const snap = await getDocs(q)
-    return snap.docs
-      .map((d) => {
-        const data = d.data()
-        return {
-          name: String(data.name ?? ''),
-          wins: Number(data.wins ?? 0),
-          lastSavedAt: Number(data.lastSavedAt ?? 0),
-        }
+  const map = new Map<string, Agg>()
+  for (const d of snap.docs) {
+    const r = parseRecord(d.id, d.data() as Record<string, unknown>)
+    if (!r.won) continue
+    if (r.difficulty !== difficulty) continue
+    const name = r.name.trim()
+    if (!name) continue
+
+    const prev = map.get(name)
+    if (!prev) {
+      map.set(name, {
+        name,
+        wins: 1,
+        lastSavedAt: r.savedAt,
+        bestSeconds: r.seconds,
+        bestAttempts: r.attempts,
+        bestAttemptsSeconds: r.seconds,
       })
-      .filter((r) => r.name && r.wins > 0)
-  } catch {
-    // 복합 인덱스가 아직 없으면 전체 불러와 필터
-    const snap = await getDocs(collection(getDb(), RANK_COLLECTION))
-    return snap.docs
-      .map((d) => {
-        const data = d.data()
-        return {
-          name: String(data.name ?? ''),
-          wins: Number(data.wins ?? 0),
-          lastSavedAt: Number(data.lastSavedAt ?? 0),
-          difficulty: data.difficulty as Difficulty,
-        }
-      })
-      .filter((r) => r.difficulty === difficulty && r.name && r.wins > 0)
+      continue
+    }
+
+    prev.wins += 1
+    prev.lastSavedAt = Math.max(prev.lastSavedAt, r.savedAt)
+    if (r.seconds < prev.bestSeconds) prev.bestSeconds = r.seconds
+    if (
+      r.attempts < prev.bestAttempts ||
+      (r.attempts === prev.bestAttempts && r.seconds < prev.bestAttemptsSeconds)
+    ) {
+      prev.bestAttempts = r.attempts
+      prev.bestAttemptsSeconds = r.seconds
+    }
+  }
+
+  return [...map.values()]
+}
+
+/** records 성공 기록을 이름별로 집계한 랭킹 */
+export async function loadRanking(
+  difficulty: Difficulty,
+  mode: RankMode = 'wins',
+): Promise<RankEntry[]> {
+  if (!isFirebaseConfigured()) return []
+
+  const list = await loadWinRecords(difficulty)
+
+  if (mode === 'fastest') {
+    return list
       .sort((a, b) => {
+        if (a.bestSeconds !== b.bestSeconds) return a.bestSeconds - b.bestSeconds
         if (b.wins !== a.wins) return b.wins - a.wins
         return b.lastSavedAt - a.lastSavedAt
       })
       .slice(0, 50)
-      .map(({ name, wins, lastSavedAt }) => ({ name, wins, lastSavedAt }))
+      .map((r) => ({
+        name: r.name,
+        score: r.bestSeconds,
+        scoreLabel: formatSeconds(r.bestSeconds),
+        wins: r.wins,
+        lastSavedAt: r.lastSavedAt,
+      }))
   }
+
+  if (mode === 'attempts') {
+    return list
+      .sort((a, b) => {
+        if (a.bestAttempts !== b.bestAttempts) {
+          return a.bestAttempts - b.bestAttempts
+        }
+        if (a.bestAttemptsSeconds !== b.bestAttemptsSeconds) {
+          return a.bestAttemptsSeconds - b.bestAttemptsSeconds
+        }
+        return b.lastSavedAt - a.lastSavedAt
+      })
+      .slice(0, 50)
+      .map((r) => ({
+        name: r.name,
+        score: r.bestAttempts,
+        scoreLabel: `${r.bestAttempts}회`,
+        wins: r.wins,
+        lastSavedAt: r.lastSavedAt,
+      }))
+  }
+
+  return list
+    .sort((a, b) => {
+      if (b.wins !== a.wins) return b.wins - a.wins
+      return b.lastSavedAt - a.lastSavedAt
+    })
+    .slice(0, 50)
+    .map((r) => ({
+      name: r.name,
+      score: r.wins,
+      scoreLabel: `${r.wins}승`,
+      wins: r.wins,
+      lastSavedAt: r.lastSavedAt,
+    }))
 }
 
 export async function saveHistoryRecord(
@@ -143,21 +216,6 @@ export async function saveHistoryRecord(
 
   const ref = await addDoc(collection(getDb(), COLLECTION), payload)
   localStorage.setItem(LAST_NAME_KEY, name)
-
-  if (record.won && name) {
-    const rankId = `${record.difficulty}_${name}`
-    await setDoc(
-      doc(getDb(), RANK_COLLECTION, rankId),
-      {
-        name,
-        difficulty: record.difficulty,
-        wins: increment(1),
-        lastSavedAt: savedAt,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    )
-  }
 
   return {
     id: ref.id,

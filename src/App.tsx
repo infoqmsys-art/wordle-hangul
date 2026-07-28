@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Board } from './components/Board'
+import { Confetti } from './components/Confetti'
 import { DifficultySelect } from './components/DifficultySelect'
 import { HistoryModal } from './components/HistoryModal'
 import { HowTo } from './components/HowTo'
@@ -148,11 +149,19 @@ function App() {
           shake={game.shake}
           revealingRow={game.revealingRow}
           wordLength={game.wordLength}
+          bounce={game.celebrate}
         />
 
         <div className="hint-bar">
           <span className="hint-pill soft">
             기회 {MAX_ATTEMPTS - game.attemptsUsed}/{MAX_ATTEMPTS}
+          </span>
+          <span
+            className={`hint-pill soft timer-pill${
+              game.startedAt && !finished ? ' is-live' : ''
+            }`}
+          >
+            {game.startedAt ? formatSeconds(game.seconds) : '0초'}
           </span>
           <span className="hint-pill soft">자모 {game.wordLength}칸</span>
         </div>
@@ -221,6 +230,7 @@ function App() {
       </main>
 
       {game.toast && <div className="toast">{game.toast}</div>}
+      <Confetti active={game.celebrate} />
 
       <HowTo
         open={howto}

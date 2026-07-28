@@ -8,6 +8,7 @@ type Props = {
   shake: boolean
   revealingRow: number | null
   wordLength: number
+  bounce?: boolean
 }
 
 function Tile({
@@ -39,6 +40,7 @@ export function Board({
   shake,
   revealingRow,
   wordLength,
+  bounce = false,
 }: Props) {
   const display: {
     jamo: string[]
@@ -71,7 +73,13 @@ export function Board({
 
   return (
     <div
-      className={`board board-cols-${wordLength}`}
+      className={[
+        'board',
+        `board-cols-${wordLength}`,
+        bounce ? 'board-bounce' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       aria-label="추측 보드"
     >
       {display.map((row, ri) => (

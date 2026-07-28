@@ -17,6 +17,8 @@ import {
   type TileStatus,
 } from '../lib/game'
 import { normalizeInput } from '../lib/hangul'
+import { playLoseSound, playWinSound } from '../lib/sfx'
+import { recordPersonalResult } from '../lib/stats'
 import { lookupStdict } from '../lib/stdict'
 
 export const MAX_ATTEMPTS = 5
@@ -35,6 +37,7 @@ type Persisted = {
   startedAt: number | null
   finishedAt: number | null
   recordSaved: boolean
+  statsRecorded?: boolean
 }
 
 const SESSION_KEY = 'wordle-hangul-session-v5'
@@ -114,6 +117,9 @@ export function useGame() {
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [finishedAt, setFinishedAt] = useState<number | null>(null)
   const [recordSaved, setRecordSaved] = useState(false)
+  const [statsRecorded, setStatsRecorded] = useState(false)
+  const [celebrate, setCelebrate] = useState(false)
+  const [tick, setTick] = useState(0)
 
   const wordLength = difficulty
     ? DIFFICULTY_META[difficulty].wordLength
@@ -133,6 +139,8 @@ export function useGame() {
         setStartedAt(saved.startedAt)
         setFinishedAt(saved.finishedAt)
         setRecordSaved(saved.recordSaved)
+        setStatsRecorded(Boolean(saved.statsRecorded) || saved.status !== 'playing')
+        setCelebrate(false)
         setCurrent([])
         setDefinition(null)
         setShowResult(saved.status !== 'playing')
@@ -147,6 +155,8 @@ export function useGame() {
       setStartedAt(null)
       setFinishedAt(null)
       setRecordSaved(false)
+      setStatsRecorded(false)
+      setCelebrate(false)
       setDefinition(null)
       setShowResult(false)
       setRevealingRow(null)
@@ -194,6 +204,7 @@ export function useGame() {
       startedAt,
       finishedAt,
       recordSaved,
+      statsRecorded,
     })
   }, [
     rows,
@@ -202,8 +213,15 @@ export function useGame() {
     startedAt,
     finishedAt,
     recordSaved,
+    statsRecorded,
     difficulty,
   ])
+
+  useEffect(() => {
+    if (status !== 'playing' || startedAt == null) return
+    const id = window.setInterval(() => setTick((n) => n + 1), 250)
+    return () => window.clearInterval(id)
+  }, [status, startedAt])
 
   useEffect(() => {
     if (!answerEntry || (status !== 'won' && status !== 'lost')) return
@@ -252,6 +270,8 @@ export function useGame() {
     setStatus('playing')
     setShowResult(false)
     setKeyStatuses({})
+    setCelebrate(false)
+    setStatsRecorded(false)
   }, [])
 
   const locked =
@@ -266,14 +286,38 @@ export function useGame() {
   }, [])
 
   const finishGame = useCallback(
-    (next: 'won' | 'lost', message: string, word: string) => {
-      setFinishedAt(Date.now())
+    (next: 'won' | 'lost', message: string, word: string, attempts: number) => {
+      const end = Date.now()
+      setFinishedAt(end)
       setStatus(next)
       pushRecentWord(word)
       showToast(message)
-      window.setTimeout(() => setShowResult(true), 400)
+
+      const elapsed =
+        startedAt == null ? 0 : Math.max(0, (end - startedAt) / 1000)
+
+      setStatsRecorded((already) => {
+        if (!already) {
+          recordPersonalResult({
+            won: next === 'won',
+            attempts,
+            seconds: elapsed,
+          })
+        }
+        return true
+      })
+
+      if (next === 'won') {
+        setCelebrate(true)
+        playWinSound()
+        window.setTimeout(() => setCelebrate(false), 2200)
+      } else {
+        playLoseSound()
+      }
+
+      window.setTimeout(() => setShowResult(true), next === 'won' ? 900 : 400)
     },
-    [showToast],
+    [showToast, startedAt],
   )
 
   const onKey = useCallback(
@@ -316,9 +360,9 @@ export function useGame() {
 
         window.setTimeout(() => {
           setRevealingRow(null)
-          if (won) finishGame('won', '정답!', word)
+          if (won) finishGame('won', '정답!', word, rowIndex + 1)
           else if (rowIndex + 1 >= MAX_ATTEMPTS) {
-            finishGame('lost', `정답은 ${word}`, word)
+            finishGame('lost', `정답은 ${word}`, word, rowIndex + 1)
           }
         }, 180 * wordLength + 120)
         return
@@ -375,12 +419,14 @@ export function useGame() {
     ? findWordByJamo(dict!, answerEntry.jamo) ?? answerEntry.word
     : ''
 
+  void tick
   const seconds =
     startedAt == null
       ? 0
       : Math.max(0, ((finishedAt ?? Date.now()) - startedAt) / 1000)
 
   return {
+    startedAt,
     dictReady: Boolean(dict),
     ready: Boolean(dict && answerEntry && difficulty),
     needDifficulty: Boolean(dict) && !difficulty,
@@ -414,5 +460,6 @@ export function useGame() {
     nextRound,
     startDifficulty,
     changeDifficulty,
+    celebrate,
   }
 }

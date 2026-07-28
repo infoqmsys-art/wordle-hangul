@@ -8,6 +8,13 @@ import {
   getLastName,
   saveHistoryRecord,
 } from '../lib/history'
+import {
+  avgWinAttempts,
+  avgWinSeconds,
+  getPersonalStats,
+  winRate,
+  type PersonalStats,
+} from '../lib/stats'
 
 type Props = {
   open: boolean
@@ -59,6 +66,7 @@ export function ResultModal({
   const [savedName, setSavedName] = useState(getLastName)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [stats, setStats] = useState<PersonalStats>(() => getPersonalStats())
 
   useEffect(() => {
     if (open) {
@@ -67,12 +75,15 @@ export function ResultModal({
       setSavedName(last)
       setSaved(recordSaved)
       setError(null)
+      setStats(getPersonalStats())
     }
   }, [open, recordSaved, answerWord])
 
   if (!open || status === 'playing') return null
 
   const won = status === 'won'
+  const avgAttempts = avgWinAttempts(stats)
+  const avgSeconds = avgWinSeconds(stats)
 
   const save = async () => {
     const trimmed = name.trim()
@@ -191,6 +202,25 @@ export function ResultModal({
               : `${MAX_ATTEMPTS}번 실패 · ${formatSeconds(seconds)}`}
           </p>
         </div>
+
+        {stats.played > 0 && (
+          <div className="personal-stats" aria-label="내 통계">
+            <div>
+              <strong>{winRate(stats)}%</strong>
+              <span>승률</span>
+            </div>
+            <div>
+              <strong>{avgAttempts != null ? avgAttempts : '—'}</strong>
+              <span>평균 시도</span>
+            </div>
+            <div>
+              <strong>
+                {avgSeconds != null ? formatSeconds(avgSeconds) : '—'}
+              </strong>
+              <span>평균 시간</span>
+            </div>
+          </div>
+        )}
 
         <div className="result-rows">
           <div className="result-row">
