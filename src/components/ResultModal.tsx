@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import type { Difficulty } from '../data/words'
+import { DIFFICULTY_META } from '../data/words'
 import type { Row } from '../hooks/useGame'
 import { MAX_ATTEMPTS } from '../hooks/useGame'
 import {
@@ -16,6 +18,8 @@ type Props = {
   rows: Row[]
   seconds: number
   dateKey: string
+  difficulty: Difficulty
+  wordLength: number
   recordSaved: boolean
   onRecordSaved: () => void
   onNextRound: () => void
@@ -42,6 +46,8 @@ export function ResultModal({
   rows,
   seconds,
   dateKey,
+  difficulty,
+  wordLength,
   recordSaved,
   onRecordSaved,
   onNextRound,
@@ -86,6 +92,8 @@ export function ResultModal({
         maxAttempts: MAX_ATTEMPTS,
         won,
         dateKey,
+        difficulty,
+        wordLength,
       })
       setSaved(true)
       setSavedName(finalName)
@@ -99,7 +107,7 @@ export function ResultModal({
 
   const share = async () => {
     const who = savedName.trim() || '나'
-    const text = `푸들푸들 오늘의 단어 연습\n${who} · ${won ? '성공' : '실패'}\n정답은 ${answerWord}\n${won ? rows.length : 'X'}/${MAX_ATTEMPTS} · ${formatSeconds(seconds)}\n\n${emojiGrid(rows)}`
+    const text = `푸들푸들 오늘의 단어 연습\n${who} · ${won ? '성공' : '실패'} · ${DIFFICULTY_META[difficulty].label}\n정답은 ${answerWord}\n${won ? rows.length : 'X'}/${MAX_ATTEMPTS} · ${formatSeconds(seconds)}\n\n${emojiGrid(rows)}`
     try {
       if (navigator.share) {
         await navigator.share({ text })
@@ -133,7 +141,9 @@ export function ResultModal({
         <p id="result-answer-title" className="result-answer-line">
           정답은 <span>{answerWord}</span>
         </p>
-        <p className="result-jamo">{answerJamo.join(' · ')}</p>
+        <p className="result-jamo">
+          {DIFFICULTY_META[difficulty].label} · {answerJamo.join(' · ')}
+        </p>
         {definition && <p className="result-def">{definition}</p>}
 
         <div className={`result-card ${won ? 'is-win' : 'is-lose'}`}>

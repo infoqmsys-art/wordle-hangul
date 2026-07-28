@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
+  DIFFICULTY_META,
   findWordByJamo,
   isValidGuess,
   loadDictionary,
   pickRandomAnswer,
+  type Difficulty,
   type Dictionary,
   type WordEntry,
 } from '../data/words'
@@ -18,7 +20,6 @@ import { normalizeInput } from '../lib/hangul'
 import { lookupStdict } from '../lib/stdict'
 
 export const MAX_ATTEMPTS = 5
-export const WORD_LENGTH = 5
 
 export type Row = {
   jamo: string[]
@@ -26,6 +27,7 @@ export type Row = {
 }
 
 type Persisted = {
+  difficulty: Difficulty
   answerWord: string
   answerJamo: string[]
   guesses: string[][]
@@ -35,8 +37,9 @@ type Persisted = {
   recordSaved: boolean
 }
 
-const SESSION_KEY = 'wordle-hangul-session-v4'
-const RECENT_KEY = 'wordle-hangul-recent-v4'
+const SESSION_KEY = 'wordle-hangul-session-v5'
+const RECENT_KEY = 'wordle-hangul-recent-v5'
+const DIFF_KEY = 'wordle-hangul-difficulty'
 const RECENT_LIMIT = 40
 
 function loadSession(): Persisted | null {
@@ -97,6 +100,7 @@ export function useGame() {
   const dateKey = formatDateKey()
   const [dict, setDict] = useState<Dictionary | null>(null)
   const [dictError, setDictError] = useState<string | null>(null)
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(null)
   const [answerEntry, setAnswerEntry] = useState<WordEntry | null>(null)
   const [rows, setRows] = useState<Row[]>([])
   const [current, setCurrent] = useState<string[]>([])
@@ -111,34 +115,44 @@ export function useGame() {
   const [finishedAt, setFinishedAt] = useState<number | null>(null)
   const [recordSaved, setRecordSaved] = useState(false)
 
-  const applyRound = useCallback((answer: WordEntry, saved?: Persisted | null) => {
-    if (saved && saved.answerWord === answer.word) {
-      const restored = restoreRows(saved.guesses, answer.jamo)
-      setAnswerEntry(answer)
-      setRows(restored)
-      setStatus(saved.status)
-      setKeyStatuses(buildKeyStatuses(restored))
-      setStartedAt(saved.startedAt)
-      setFinishedAt(saved.finishedAt)
-      setRecordSaved(saved.recordSaved)
-      setCurrent([])
-      setDefinition(null)
-      setShowResult(saved.status !== 'playing')
-      return
-    }
+  const wordLength = difficulty
+    ? DIFFICULTY_META[difficulty].wordLength
+    : 5
 
-    setAnswerEntry(answer)
-    setRows([])
-    setCurrent([])
-    setStatus('playing')
-    setKeyStatuses({})
-    setStartedAt(null)
-    setFinishedAt(null)
-    setRecordSaved(false)
-    setDefinition(null)
-    setShowResult(false)
-    setRevealingRow(null)
-  }, [])
+  const applyRound = useCallback(
+    (diff: Difficulty, answer: WordEntry, saved?: Persisted | null) => {
+      setDifficulty(diff)
+      localStorage.setItem(DIFF_KEY, diff)
+
+      if (saved && saved.answerWord === answer.word) {
+        const restored = restoreRows(saved.guesses, answer.jamo)
+        setAnswerEntry(answer)
+        setRows(restored)
+        setStatus(saved.status)
+        setKeyStatuses(buildKeyStatuses(restored))
+        setStartedAt(saved.startedAt)
+        setFinishedAt(saved.finishedAt)
+        setRecordSaved(saved.recordSaved)
+        setCurrent([])
+        setDefinition(null)
+        setShowResult(saved.status !== 'playing')
+        return
+      }
+
+      setAnswerEntry(answer)
+      setRows([])
+      setCurrent([])
+      setStatus('playing')
+      setKeyStatuses({})
+      setStartedAt(null)
+      setFinishedAt(null)
+      setRecordSaved(false)
+      setDefinition(null)
+      setShowResult(false)
+      setRevealingRow(null)
+    },
+    [],
+  )
 
   useEffect(() => {
     let alive = true
@@ -148,17 +162,17 @@ export function useGame() {
         setDict(loaded)
 
         const saved = loadSession()
-        if (saved?.answerWord && saved.answerJamo?.length === WORD_LENGTH) {
-          const fromSaved: WordEntry = {
-            word: saved.answerWord,
-            jamo: saved.answerJamo,
-          }
-          applyRound(fromSaved, saved)
-          return
+        if (
+          saved?.difficulty &&
+          saved.answerWord &&
+          saved.answerJamo?.length === DIFFICULTY_META[saved.difficulty].wordLength
+        ) {
+          applyRound(
+            saved.difficulty,
+            { word: saved.answerWord, jamo: saved.answerJamo },
+            saved,
+          )
         }
-
-        const answer = pickRandomAnswer(loaded, loadRecentWords())
-        applyRound(answer)
       })
       .catch((err: unknown) => {
         if (!alive) return
@@ -170,21 +184,9 @@ export function useGame() {
   }, [applyRound])
 
   useEffect(() => {
-    if (!answerEntry) return
-    if (rows.length === 0 && status === 'playing' && !startedAt) {
-      // 새 라운드 시작 직후엔 세션을 비워 두지 않고 현재 정답만 저장
-      saveSession({
-        answerWord: answerEntry.word,
-        answerJamo: answerEntry.jamo,
-        guesses: [],
-        status: 'playing',
-        startedAt: null,
-        finishedAt: null,
-        recordSaved: false,
-      })
-      return
-    }
+    if (!answerEntry || !difficulty) return
     saveSession({
+      difficulty,
       answerWord: answerEntry.word,
       answerJamo: answerEntry.jamo,
       guesses: rows.map((r) => r.jamo),
@@ -193,7 +195,15 @@ export function useGame() {
       finishedAt,
       recordSaved,
     })
-  }, [rows, status, answerEntry, startedAt, finishedAt, recordSaved])
+  }, [
+    rows,
+    status,
+    answerEntry,
+    startedAt,
+    finishedAt,
+    recordSaved,
+    difficulty,
+  ])
 
   useEffect(() => {
     if (!answerEntry || (status !== 'won' && status !== 'lost')) return
@@ -212,8 +222,44 @@ export function useGame() {
     window.setTimeout(() => setShake(false), 500)
   }, [])
 
+  const startDifficulty = useCallback(
+    (diff: Difficulty) => {
+      if (!dict) return
+      clearSession()
+      const answer = pickRandomAnswer(dict, diff, loadRecentWords())
+      applyRound(diff, answer)
+      showToast(
+        diff === 'hard' ? '어려움 · 자모 7칸!' : '쉬움 · 자모 5칸!',
+      )
+    },
+    [dict, applyRound, showToast],
+  )
+
+  const nextRound = useCallback(() => {
+    if (!dict || !difficulty) return
+    clearSession()
+    const answer = pickRandomAnswer(dict, difficulty, loadRecentWords())
+    applyRound(difficulty, answer)
+    showToast('다음 문제!')
+  }, [dict, difficulty, applyRound, showToast])
+
+  const changeDifficulty = useCallback(() => {
+    clearSession()
+    setDifficulty(null)
+    setAnswerEntry(null)
+    setRows([])
+    setCurrent([])
+    setStatus('playing')
+    setShowResult(false)
+    setKeyStatuses({})
+  }, [])
+
   const locked =
-    !dict || !answerEntry || status !== 'playing' || revealingRow !== null
+    !dict ||
+    !answerEntry ||
+    !difficulty ||
+    status !== 'playing' ||
+    revealingRow !== null
 
   const ensureTimer = useCallback(() => {
     setStartedAt((prev) => prev ?? Date.now())
@@ -221,8 +267,7 @@ export function useGame() {
 
   const finishGame = useCallback(
     (next: 'won' | 'lost', message: string, word: string) => {
-      const now = Date.now()
-      setFinishedAt(now)
+      setFinishedAt(Date.now())
       setStatus(next)
       pushRecentWord(word)
       showToast(message)
@@ -230,15 +275,6 @@ export function useGame() {
     },
     [showToast],
   )
-
-  const nextRound = useCallback(() => {
-    if (!dict) return
-    clearSession()
-    const recent = loadRecentWords()
-    const answer = pickRandomAnswer(dict, recent)
-    applyRound(answer)
-    showToast('다음 문제!')
-  }, [dict, applyRound, showToast])
 
   const onKey = useCallback(
     (key: string) => {
@@ -250,8 +286,8 @@ export function useGame() {
       }
 
       if (key === 'Enter') {
-        if (current.length !== WORD_LENGTH) {
-          showToast('자모 5개를 입력해 주세요')
+        if (current.length !== wordLength) {
+          showToast(`자모 ${wordLength}개를 입력해 주세요`)
           triggerShake()
           return
         }
@@ -280,12 +316,11 @@ export function useGame() {
 
         window.setTimeout(() => {
           setRevealingRow(null)
-          if (won) {
-            finishGame('won', '정답!', word)
-          } else if (rowIndex + 1 >= MAX_ATTEMPTS) {
+          if (won) finishGame('won', '정답!', word)
+          else if (rowIndex + 1 >= MAX_ATTEMPTS) {
             finishGame('lost', `정답은 ${word}`, word)
           }
-        }, 180 * WORD_LENGTH + 120)
+        }, 180 * wordLength + 120)
         return
       }
 
@@ -295,7 +330,7 @@ export function useGame() {
       setCurrent((prev) => {
         const next = [...prev]
         for (const part of parts) {
-          if (next.length >= WORD_LENGTH) break
+          if (next.length >= wordLength) break
           next.push(part)
         }
         return next
@@ -307,6 +342,7 @@ export function useGame() {
       answerEntry,
       current,
       rows.length,
+      wordLength,
       showToast,
       triggerShake,
       ensureTimer,
@@ -344,16 +380,19 @@ export function useGame() {
       ? 0
       : Math.max(0, ((finishedAt ?? Date.now()) - startedAt) / 1000)
 
-  const markRecordSaved = useCallback(() => {
-    setRecordSaved(true)
-  }, [])
-
   return {
-    ready: Boolean(dict && answerEntry),
+    dictReady: Boolean(dict),
+    ready: Boolean(dict && answerEntry && difficulty),
+    needDifficulty: Boolean(dict) && !difficulty,
     dictError,
-    dictSource: dict?.source ?? '',
+    difficulty,
+    wordLength,
     guessCount: dict ? Object.keys(dict.guesses).length : 0,
-    answerCount: dict?.answers.length ?? 0,
+    answerCount: dict
+      ? difficulty === 'hard'
+        ? dict.answers7.length
+        : dict.answers5.length
+      : 0,
     rows,
     current,
     status,
@@ -371,7 +410,9 @@ export function useGame() {
     seconds,
     dateKey,
     recordSaved,
-    markRecordSaved,
+    markRecordSaved: () => setRecordSaved(true),
     nextRound,
+    startDifficulty,
+    changeDifficulty,
   }
 }

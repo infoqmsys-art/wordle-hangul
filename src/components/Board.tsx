@@ -1,5 +1,5 @@
 import type { Row } from '../hooks/useGame'
-import { MAX_ATTEMPTS, WORD_LENGTH } from '../hooks/useGame'
+import { MAX_ATTEMPTS } from '../hooks/useGame'
 import type { TileStatus } from '../lib/game'
 
 type Props = {
@@ -7,6 +7,7 @@ type Props = {
   current: string[]
   shake: boolean
   revealingRow: number | null
+  wordLength: number
 }
 
 function Tile({
@@ -32,7 +33,13 @@ function Tile({
   )
 }
 
-export function Board({ rows, current, shake, revealingRow }: Props) {
+export function Board({
+  rows,
+  current,
+  shake,
+  revealingRow,
+  wordLength,
+}: Props) {
   const display: {
     jamo: string[]
     statuses: TileStatus[]
@@ -49,13 +56,13 @@ export function Board({ rows, current, shake, revealingRow }: Props) {
         flip: revealingRow === i,
       })
     } else if (i === rows.length) {
-      const jamo = Array.from({ length: WORD_LENGTH }, (_, k) => current[k] ?? '')
+      const jamo = Array.from({ length: wordLength }, (_, k) => current[k] ?? '')
       const statuses: TileStatus[] = jamo.map((ch) => (ch ? 'tbd' : 'empty'))
       display.push({ jamo, statuses, isCurrent: true, flip: false })
     } else {
       display.push({
-        jamo: Array(WORD_LENGTH).fill(''),
-        statuses: Array(WORD_LENGTH).fill('empty'),
+        jamo: Array(wordLength).fill(''),
+        statuses: Array(wordLength).fill('empty'),
         isCurrent: false,
         flip: false,
       })
@@ -63,11 +70,15 @@ export function Board({ rows, current, shake, revealingRow }: Props) {
   }
 
   return (
-    <div className="board" aria-label="추측 보드">
+    <div
+      className={`board board-cols-${wordLength}`}
+      aria-label="추측 보드"
+    >
       {display.map((row, ri) => (
         <div
           key={ri}
           className={`board-row${row.isCurrent && shake ? ' shake' : ''}`}
+          style={{ gridTemplateColumns: `repeat(${wordLength}, 1fr)` }}
         >
           {row.jamo.map((ch, ci) => (
             <Tile
@@ -75,7 +86,7 @@ export function Board({ rows, current, shake, revealingRow }: Props) {
               ch={ch}
               status={row.statuses[ci]}
               flip={row.flip}
-              delay={row.flip ? ci * 160 : undefined}
+              delay={row.flip ? ci * 140 : undefined}
             />
           ))}
         </div>

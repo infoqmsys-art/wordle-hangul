@@ -19,7 +19,11 @@ export function HowTo({ open, onClose, guessCount = 0, answerCount = 0 }: Props)
       >
         <h2 id="howto-title">어떻게 할까요?</h2>
         <ul className="howto-list">
-          <li>사전 속 단어를 <strong>자모 5개</strong>로 맞춰요.</li>
+          <li>사전 속 단어를 <strong>자모</strong>로 맞춰요.</li>
+          <li>
+            <strong>쉬움(5칸)</strong> / <strong>어려움(7칸)</strong> 난이도를
+            고를 수 있어요.
+          </li>
           <li>
             <strong>ㅔ</strong>처럼 합쳐진 모음은 <strong>ㅓ + ㅣ</strong>로
             나눠 입력해요.

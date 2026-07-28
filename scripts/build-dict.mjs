@@ -1,11 +1,10 @@
 /**
- * 표준국어대사전 기반 명사 목록에서 자모 5개 단어만 추출해 public/dict 에 저장한다.
- * 출처: pd-korean-noun-list-for-wordles (표준국어대사전 + 한국어 학습용 어휘)
+ * 표준국어대사전 기반 명사에서 자모 5/7 단어를 추출한다.
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ALL_NOUNS } from 'pd-korean-noun-list-for-wordles'
+import { ALL_NOUNS, COMMON_NOUNS } from 'pd-korean-noun-list-for-wordles'
 
 const CHO = [
   'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ',
@@ -78,125 +77,126 @@ function decompose(text) {
   return result
 }
 
-function isPlayable(word) {
+function isPlayable(word, length) {
   if (!/^[가-힣]+$/.test(word)) return null
-  if (word.length < 2 || word.length > 4) return null
+  if (word.length < 2 || word.length > 5) return null
   const jamo = decompose(word)
-  if (jamo.length !== 5) return null
+  if (jamo.length !== length) return null
   if (!jamo.every((j) => BASIC.has(j))) return null
   return jamo
 }
 
-function buildMap(words) {
+function buildMap(words, lengths) {
   const byJamo = {}
   for (const word of words) {
-    const jamo = isPlayable(word)
-    if (!jamo) continue
-    const key = jamo.join('')
-    if (!byJamo[key]) byJamo[key] = word
+    for (const length of lengths) {
+      const jamo = isPlayable(word, length)
+      if (!jamo) continue
+      const key = jamo.join('')
+      if (!byJamo[key]) byJamo[key] = word
+    }
   }
   return byJamo
+}
+
+function buildAnswers(words, length, guesses) {
+  const map = {}
+  for (const word of words) {
+    const jamo = isPlayable(word, length)
+    if (!jamo) continue
+    const key = jamo.join('')
+    if (!guesses[key]) guesses[key] = word
+    if (!map[key]) map[key] = { word, jamo: jamo.slice() }
+  }
+  return Object.values(map)
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const outDir = path.resolve(__dirname, '../public/dict')
 fs.mkdirSync(outDir, { recursive: true })
 
-const guesses = buildMap(ALL_NOUNS)
+const guesses = buildMap(ALL_NOUNS, [5, 7])
 
-/**
- * 정답은 완전 랜덤 사전 단어가 아니라, 일상에서 익숙한 단어만 사용한다.
- * (추측 허용 목록 guesses 는 표준국어대사전 명사 전체 유지)
- */
-const FAMILIAR_ANSWERS = [
-  // 자연·날씨
+const FAMILIAR = [
   '하늘', '구름', '바람', '바다', '호수', '산길', '들판', '계곡', '폭포',
   '단풍', '낙엽', '햇살', '노을', '이슬', '서리', '우박', '장마', '태풍',
   '여름', '가을', '겨울', '봄날', '맑음', '흐림', '한파', '건조',
-  // 생활·물건
   '가방', '우산', '지갑', '시계', '반지', '이불', '커튼', '거울', '바늘',
   '종이', '가위', '자석', '지폐', '카드', '선물', '편지', '사진', '그림',
   '노래', '음악', '영화', '소설', '잡지', '만화', '시집', '메모',
-  // 음식
   '사과', '수박', '라면', '김치', '소금', '갈비', '치킨', '초밥', '과자',
   '사탕', '야식', '녹차', '홍차', '커피', '주스', '우유', '감자', '양파',
   '마늘', '호박', '배추', '버섯', '식초', '카레', '시럽', '연유', '두부',
   '계란', '달걀', '생선', '고기', '치즈', '버터', '설탕', '간장', '된장',
-  // 장소·도시
   '서울', '부산', '대구', '제주', '학교', '교실', '카페', '시장', '서점',
   '터널', '항구', '시청', '공원', '극장', '병원', '약국', '은행', '회사',
   '시골', '마을', '거실', '부엌', '다락', '창고', '마당', '지붕',
-  // 사람·관계
   '친구', '가족', '자매', '형제', '부모', '자식', '사촌', '손자', '손녀',
   '사위', '신부', '선수', '작가', '동료', '상사',
-  // 활동·추상 (쉬운 것)
   '시간', '저녁', '아침', '주말', '공부', '시험', '수영', '조깅', '독서',
   '미술', '수학', '국어', '영어', '역사', '사회', '도덕', '기술', '가정',
   '한자', '발표', '토론', '취미', '특기', '미래', '과거', '시작', '도전',
   '목표', '노력', '축하', '추석', '연초', '축구', '농구', '배구', '골프',
   '문자', '속도', '무게', '길이', '높이', '온도', '습도', '기압',
-  // 동물·색·감정 등
   '토끼', '여우', '늑대', '파랑', '노랑', '초록', '연두', '하양', '투명',
   '무늬', '체크', '세모', '네모', '뿌리', '줄기', '장미', '이끼',
   '마음', '기억', '모래', '저금', '저축', '주식', '보험', '좌표', '위치',
   '사랑', '우정', '배려', '감사', '전시', '공연', '야근', '거래',
-  '정치', '자연', '토성', '폭포', '평야', '이혼', '미혼', '가위',
-  '대기', '바늘', '구름', '바람', '하늘', '사과', '학교', '친구',
-  // 추가 쉬운 일상어
+  '정치', '자연', '토성', '폭포', '평야', '이혼', '미혼',
   '모자', '장갑', '양말', '구두', '치마', '바지', '셔츠', '코트',
   '창문', '방문', '현관', '침대', '소파', '책상', '의자', '연필',
   '공책', '필통', '분필', '칠판', '숙제', '성적', '방학', '입학',
   '졸업', '합격', '여행', '휴가', '캠핑', '등산', '낚시', '산책',
-  '운동', '건강', '병원', '의사', '간호', '약국', '약사', '주사',
-  '버스', '택시', '기차', '비행기', '자전거', '도로', '다리', '신호',
+  '운동', '건강', '의사', '간호', '약사', '주사',
+  '버스', '택시', '기차', '도로', '다리', '신호',
   '전화', '번호', '주소', '이름', '나이', '생일', '파티', '케이크',
-  '아이스크림', '빵집', '식당', '메뉴', '주문', '계산', '영수증',
-  '엄마', '아빠', '동생', '언니', '오빠', '누나', '형님', '선생님',
-  '학생', '선생', '교실', '복도', '운동장', '도서관', '화장실',
-  '월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일',
-  '오늘', '내일', '어제', '모레', '그제', '아침', '점심', '저녁',
-  '우유', '물컵', '접시', '숟가락', '젓가락', '냄비', '프라이팬',
-  '텔레비전', '컴퓨터', '휴대폰', '카메라', '라디오', '시계',
-  '강아지', '고양이', '병아리', '송아지', '망아지', '병아리',
-  '호랑이', '코끼리', '기린', '사자', '곰돌이', '펭귄', '다람쥐',
-  '나비', '잠자리', '개미', '거미', '달팽이', '개구리', '물고기',
-  '꽃잎', '나뭇잎', '씨앗', '열매', '열매', '복숭아', '포도', '딸기',
-  '바나나', '오렌지', '레몬', '수박', '참외', '멜론', '자두',
-  '고추', '오이', '당근', '무우', '시금치', '상추', '깻잎',
-  '국수', '비빔밥', '김밥', '떡볶이', '순대', '튀김', '만두',
-  '피자', '햄버거', '샌드위치', '샐러드', '스테이크', '파스타',
-  '행복', '기쁨', '슬픔', '웃음', '미소', '눈물', '꿈', '희망',
+  '빵집', '식당', '메뉴', '주문', '계산', '영수증',
+  '엄마', '아빠', '동생', '언니', '오빠', '누나', '형님',
+  '학생', '선생', '복도',
+  '오늘', '내일', '어제', '모레', '점심',
+  '행복', '기쁨', '슬픔', '웃음', '미소', '눈물', '희망',
   '평화', '자유', '용기', '친절', '정직', '성실', '인내', '존중',
   '신뢰', '효도', '예절', '약속', '비밀', '소식', '뉴스', '날씨',
+  // 7칸용 친숙어
+  '고양이', '강아지', '도서관', '운동장', '비행기', '자동차', '휴대폰',
+  '선생님', '화장실', '초등학교', '중학교', '고등학교', '대학교',
+  '아이스크림', '텔레비전', '컴퓨터', '세탁기', '냉장고',
+  '편의점', '백화점', '지하철', '주차장', '횡단보도',
+  '생일날', '생일파티', '운동화', '양산', '지우개', '필통통',
+  '바나나', '오렌지', '딸기맛', '포도주', '수박씨',
+  '개나리', '진달래', '무궁화', '코스모스', '해바라기',
+  '다람쥐', '병아리', '송아지', '호랑이', '코끼리',
+  '개구리', '잠자리', '달팽이', '물고기',
+  '비빔밥', '떡볶이', '김밥집', '순댓국',
+  '햄버거', '샌드위치', '파스타', '스테이크',
+  '월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일',
+  '부모님', '할머니', '할아버지', '외할머니',
+  '연필심', '공책장', '칠판지우개',
+  '소방서', '경찰서', '우체국', '주민센터',
+  '놀이터', '수영장', '체육관', '영화관',
+  '카메라', '라디오', '이어폰', '충전기',
+  '초코플', '사탕집', '과자점',
 ]
 
-const answerMap = {}
-for (const word of FAMILIAR_ANSWERS) {
-  const jamo = isPlayable(word)
-  if (!jamo) continue
-  const key = jamo.join('')
-  // 추측 사전에 없으면 추가해 정답이 항상 허용되게
-  if (!guesses[key]) guesses[key] = word
-  if (!answerMap[key]) {
-    answerMap[key] = { word: guesses[key], jamo: [...key] }
-  }
+const answers5 = buildAnswers(FAMILIAR, 5, guesses)
+const answers7Map = {}
+for (const entry of [
+  ...buildAnswers(FAMILIAR, 7, guesses),
+  ...buildAnswers(COMMON_NOUNS, 7, guesses),
+]) {
+  const key = entry.jamo.join('')
+  if (!answers7Map[key]) answers7Map[key] = entry
 }
+const answers7 = Object.values(answers7Map)
 
-const answers = Object.values(answerMap)
-
-fs.writeFileSync(
-  path.join(outDir, 'guesses.json'),
-  JSON.stringify(guesses),
-  'utf8',
-)
-fs.writeFileSync(
-  path.join(outDir, 'answers.json'),
-  JSON.stringify(answers),
-  'utf8',
-)
+fs.writeFileSync(path.join(outDir, 'guesses.json'), JSON.stringify(guesses), 'utf8')
+fs.writeFileSync(path.join(outDir, 'answers-5.json'), JSON.stringify(answers5), 'utf8')
+fs.writeFileSync(path.join(outDir, 'answers-7.json'), JSON.stringify(answers7), 'utf8')
+// 하위 호환
+fs.writeFileSync(path.join(outDir, 'answers.json'), JSON.stringify(answers5), 'utf8')
 
 console.log(`guesses: ${Object.keys(guesses).length}`)
-console.log(`answers: ${answers.length}`)
-console.log(`sample: ${answers.slice(0, 30).map((a) => a.word).join(', ')}`)
-console.log(`바늘: ${guesses['ㅂㅏㄴㅡㄹ'] ?? '없음'}`)
-console.log(`하늘: ${guesses['ㅎㅏㄴㅡㄹ'] ?? '없음'}`)
+console.log(`answers-5: ${answers5.length}`)
+console.log(`answers-7: ${answers7.length}`)
+console.log(`sample5: ${answers5.slice(0, 8).map((a) => a.word).join(', ')}`)
+console.log(`sample7: ${answers7.slice(0, 8).map((a) => a.word).join(', ')}`)

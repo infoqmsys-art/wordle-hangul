@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Board } from './components/Board'
+import { DifficultySelect } from './components/DifficultySelect'
 import { HistoryModal } from './components/HistoryModal'
 import { HowTo } from './components/HowTo'
 import { Keyboard } from './components/Keyboard'
+import { RankingModal } from './components/RankingModal'
 import { ResultModal } from './components/ResultModal'
+import { DIFFICULTY_META } from './data/words'
 import { useGame, MAX_ATTEMPTS } from './hooks/useGame'
 import { formatSeconds } from './lib/history'
 import './App.css'
@@ -12,6 +15,7 @@ function App() {
   const game = useGame()
   const [howto, setHowto] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [rankingOpen, setRankingOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -35,14 +39,23 @@ function App() {
     )
   }
 
-  if (!game.ready) {
+  if (!game.dictReady) {
     return (
       <div className="app">
         <div className="boot-card">
           <div className="boot-spinner" aria-hidden />
           <h1>사전 불러오는 중</h1>
-          <p>표준국어대사전 기반 단어를 준비하고 있어요</p>
+          <p>단어를 준비하고 있어요</p>
         </div>
+      </div>
+    )
+  }
+
+  if (game.needDifficulty) {
+    return (
+      <div className="app">
+        <DifficultySelect open onSelect={game.startDifficulty} />
+        {game.toast && <div className="toast">{game.toast}</div>}
       </div>
     )
   }
@@ -59,7 +72,11 @@ function App() {
           <HelpIcon />
         </button>
         <div className="brand">
-          <p className="brand-kicker">매일 하나</p>
+          <p className="brand-kicker">
+            {game.difficulty
+              ? DIFFICULTY_META[game.difficulty].label
+              : '연습'}
+          </p>
           <h1>푸들푸들 오늘의 단어 연습</h1>
         </div>
         <button
@@ -85,11 +102,29 @@ function App() {
             <button
               type="button"
               onClick={() => {
+                setRankingOpen(true)
+                setMenuOpen(false)
+              }}
+            >
+              랭킹
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setHistoryOpen(true)
                 setMenuOpen(false)
               }}
             >
               기록 보기
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                game.changeDifficulty()
+                setMenuOpen(false)
+              }}
+            >
+              난이도 선택
             </button>
             {finished && (
               <button
@@ -112,23 +147,31 @@ function App() {
           current={game.current}
           shake={game.shake}
           revealingRow={game.revealingRow}
+          wordLength={game.wordLength}
         />
 
         <div className="hint-bar">
           <span className="hint-pill soft">
             기회 {MAX_ATTEMPTS - game.attemptsUsed}/{MAX_ATTEMPTS}
           </span>
+          <span className="hint-pill soft">자모 {game.wordLength}칸</span>
         </div>
 
         {finished ? (
           <>
-            <div className={`finish-card ${game.status === 'won' ? 'is-win' : 'is-lose'}`}>
+            <div
+              className={`finish-card ${game.status === 'won' ? 'is-win' : 'is-lose'}`}
+            >
               <p className="finish-answer-line">
                 정답은 <span>{game.answerWord}</span>
               </p>
               <p className="finish-jamo">{game.answerJamo.join(' · ')}</p>
               <p className="finish-meta">
                 {game.status === 'won' ? '성공' : '실패'}
+                {' · '}
+                {game.difficulty
+                  ? DIFFICULTY_META[game.difficulty].label
+                  : ''}
                 {' · '}
                 {game.status === 'won'
                   ? `${game.attemptsUsed}/${MAX_ATTEMPTS}번`
@@ -186,21 +229,30 @@ function App() {
         answerCount={game.answerCount}
       />
       <HistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} />
-      <ResultModal
-        open={game.showResult}
-        status={game.status}
-        answerWord={game.answerWord}
-        answerJamo={game.answerJamo}
-        definition={game.definition}
-        rows={game.rows}
-        seconds={game.seconds}
-        dateKey={game.dateKey}
-        recordSaved={game.recordSaved}
-        onRecordSaved={game.markRecordSaved}
-        onNextRound={game.nextRound}
-        onOpenHistory={() => setHistoryOpen(true)}
-        onClose={() => game.setShowResult(false)}
+      <RankingModal
+        open={rankingOpen}
+        onClose={() => setRankingOpen(false)}
+        initialDifficulty={game.difficulty ?? 'easy'}
       />
+      {game.difficulty && (
+        <ResultModal
+          open={game.showResult}
+          status={game.status}
+          answerWord={game.answerWord}
+          answerJamo={game.answerJamo}
+          definition={game.definition}
+          rows={game.rows}
+          seconds={game.seconds}
+          dateKey={game.dateKey}
+          difficulty={game.difficulty}
+          wordLength={game.wordLength}
+          recordSaved={game.recordSaved}
+          onRecordSaved={game.markRecordSaved}
+          onNextRound={game.nextRound}
+          onOpenHistory={() => setHistoryOpen(true)}
+          onClose={() => game.setShowResult(false)}
+        />
+      )}
     </div>
   )
 }

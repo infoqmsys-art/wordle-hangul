@@ -1,14 +1,23 @@
+export type Difficulty = 'easy' | 'hard'
+
 export type WordEntry = {
   word: string
   jamo: string[]
 }
 
 export type Dictionary = {
-  /** 자모키 → 표제어 (추측 허용) */
   guesses: Record<string, string>
-  /** 오늘의 단어 후보 */
-  answers: WordEntry[]
+  answers5: WordEntry[]
+  answers7: WordEntry[]
   source: string
+}
+
+export const DIFFICULTY_META: Record<
+  Difficulty,
+  { label: string; wordLength: number; desc: string }
+> = {
+  easy: { label: '쉬움', wordLength: 5, desc: '자모 5칸' },
+  hard: { label: '어려움', wordLength: 7, desc: '자모 7칸' },
 }
 
 let cached: Dictionary | null = null
@@ -24,19 +33,19 @@ export async function loadDictionary(): Promise<Dictionary> {
 
   loading = (async () => {
     const base = import.meta.env.BASE_URL
-    const [guessRes, answerRes] = await Promise.all([
+    const [guessRes, a5Res, a7Res] = await Promise.all([
       fetch(`${base}dict/guesses.json`),
-      fetch(`${base}dict/answers.json`),
+      fetch(`${base}dict/answers-5.json`),
+      fetch(`${base}dict/answers-7.json`),
     ])
-    if (!guessRes.ok || !answerRes.ok) {
+    if (!guessRes.ok || !a5Res.ok || !a7Res.ok) {
       throw new Error('사전 데이터를 불러오지 못했어요')
     }
-    const guesses = (await guessRes.json()) as Record<string, string>
-    const answers = (await answerRes.json()) as WordEntry[]
     cached = {
-      guesses,
-      answers,
-      source: '표준국어대사전 명사(추측) + 일상 친숙어(정답)',
+      guesses: (await guessRes.json()) as Record<string, string>,
+      answers5: (await a5Res.json()) as WordEntry[],
+      answers7: (await a7Res.json()) as WordEntry[],
+      source: '표준국어대사전 명사 + 일상 친숙어',
     }
     return cached
   })()
@@ -48,8 +57,14 @@ export async function loadDictionary(): Promise<Dictionary> {
   }
 }
 
+export function answersForDifficulty(
+  dict: Dictionary,
+  difficulty: Difficulty,
+): WordEntry[] {
+  return difficulty === 'hard' ? dict.answers7 : dict.answers5
+}
+
 export function isValidGuess(dict: Dictionary, jamo: string[]): boolean {
-  if (jamo.length !== 5) return false
   return Boolean(dict.guesses[jamoKey(jamo)])
 }
 
@@ -60,18 +75,14 @@ export function findWordByJamo(
   return dict.guesses[jamoKey(jamo)]
 }
 
-export function getAnswerByIndex(dict: Dictionary, index: number): WordEntry {
-  return dict.answers[index % dict.answers.length]
-}
-
-/** 최근 나온 단어를 피해서 랜덤 정답 선택 */
 export function pickRandomAnswer(
   dict: Dictionary,
+  difficulty: Difficulty,
   avoidWords: string[] = [],
 ): WordEntry {
+  const answers = answersForDifficulty(dict, difficulty)
   const avoid = new Set(avoidWords)
-  const pool = dict.answers.filter((a) => !avoid.has(a.word))
-  const source = pool.length > 0 ? pool : dict.answers
-  const idx = Math.floor(Math.random() * source.length)
-  return source[idx]
+  const pool = answers.filter((a) => !avoid.has(a.word))
+  const source = pool.length > 0 ? pool : answers
+  return source[Math.floor(Math.random() * source.length)]
 }

@@ -81,6 +81,9 @@ export function HistoryModal({ open, onClose }: Props) {
                 </div>
                 <div className="history-meta">
                   <span>단어 「{r.word}」</span>
+                  <span>
+                    {r.difficulty === 'hard' ? '어려움' : '쉬움'}
+                  </span>
                   <span>{formatSeconds(r.seconds)}</span>
                   <span>
                     {r.won
