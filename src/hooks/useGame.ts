@@ -18,7 +18,7 @@ import {
 import { normalizeInput } from '../lib/hangul'
 import { lookupStdict } from '../lib/stdict'
 
-export const MAX_ATTEMPTS = 4
+export const MAX_ATTEMPTS = 5
 export const WORD_LENGTH = 5
 
 export type Row = {

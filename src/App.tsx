@@ -57,7 +57,7 @@ function App() {
         </button>
         <div className="brand">
           <p className="brand-kicker">매일 하나</p>
-          <h1>오늘의 단어</h1>
+          <h1>푸들푸들 오늘의 단어 연습</h1>
         </div>
         <button
           type="button"
