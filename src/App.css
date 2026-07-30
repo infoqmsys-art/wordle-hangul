@@ -1263,6 +1263,17 @@
   color: var(--muted);
 }
 
+.profile-inapp-hint {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff6e8;
+  color: #9a5b12;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  font-weight: 600;
+}
+
 .profile-guest .cta {
   width: 100%;
   margin-top: 16px;

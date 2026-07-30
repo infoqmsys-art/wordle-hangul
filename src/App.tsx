@@ -92,6 +92,7 @@ function App() {
       authEnabled={auth.enabled}
       busy={auth.busy}
       error={auth.error}
+      inAppHint={auth.inAppHint}
       onClose={() => {
         setProfileOpen(false)
         auth.clearError()

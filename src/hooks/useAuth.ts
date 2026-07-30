@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   authErrorMessage,
   completeNicknameSetup,
+  consumeGoogleRedirect,
   isAuthEnabled,
   signInWithGoogle,
   signOutUser,
@@ -10,6 +11,7 @@ import {
   type NicknameSetup,
   type UserProfile,
 } from '../lib/auth'
+import { inAppLoginHint, isInAppBrowser } from '../lib/browser'
 
 export function useAuth() {
   const [user, setUser] = useState<UserProfile | null>(null)
@@ -19,13 +21,40 @@ export function useAuth() {
   const [ready, setReady] = useState(!isAuthEnabled())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [inAppHint] = useState(() =>
+    typeof navigator !== 'undefined' && isInAppBrowser()
+      ? inAppLoginHint()
+      : '',
+  )
 
   useEffect(() => {
     if (!isAuthEnabled()) {
       setReady(true)
       return
     }
-    return subscribeAuth((state) => {
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const redirected = await consumeGoogleRedirect()
+        if (cancelled || !redirected) return
+        if (redirected.status === 'ready') {
+          setUser(redirected.profile)
+          setNicknameSetup(null)
+        } else if (redirected.status === 'needs-nickname') {
+          setUser(null)
+          setNicknameSetup(redirected.setup)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = authErrorMessage(err)
+          if (message) setError(message)
+        }
+      }
+    })()
+
+    const unsub = subscribeAuth((state) => {
       if (state.status === 'signed-out') {
         setUser(null)
         setNicknameSetup(null)
@@ -38,6 +67,11 @@ export function useAuth() {
       }
       setReady(true)
     })
+
+    return () => {
+      cancelled = true
+      unsub()
+    }
   }, [])
 
   const signIn = useCallback(async () => {
@@ -45,6 +79,10 @@ export function useAuth() {
     setError(null)
     try {
       const result = await signInWithGoogle()
+      if (result.status === 'redirecting') {
+        // 페이지가 Google로 이동 중
+        return null
+      }
       if (result.status === 'ready') {
         setUser(result.profile)
         setNicknameSetup(null)
@@ -143,6 +181,7 @@ export function useAuth() {
     ready,
     busy,
     error,
+    inAppHint,
     clearError: () => setError(null),
     signIn,
     submitNickname,

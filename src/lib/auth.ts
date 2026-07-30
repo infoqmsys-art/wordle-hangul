@@ -1,11 +1,19 @@
 ﻿import {
   GoogleAuthProvider,
   browserPopupRedirectResolver,
+  getRedirectResult,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   type User,
 } from 'firebase/auth'
+import {
+  inAppLoginHint,
+  isInAppBrowser,
+  openInExternalBrowser,
+  preferAuthRedirect,
+} from './browser'
 import {
   doc,
   getDoc,
@@ -64,7 +72,22 @@ export function authErrorMessage(err: unknown): string | null {
     return '이 주소가 Firebase 허용 도메인에 없어요 (localhost 추가 필요)'
   }
   if (code === 'auth/popup-blocked') {
-    return '팝업이 막혔어요. 브라우저에서 팝업을 허용해 주세요'
+    return '팝업이 막혔어요. 기본 브라우저(Chrome/Safari)에서 다시 시도해 주세요'
+  }
+  if (
+    code === 'auth/web-storage-unsupported' ||
+    message.includes('disallowed_useragent')
+  ) {
+    return (
+      inAppLoginHint() ||
+      '이 브라우저에서는 Google 로그인을 쓸 수 없어요. Chrome/Safari로 열어 주세요'
+    )
+  }
+  if (code === 'auth/open-external') {
+    return (
+      inAppLoginHint() ||
+      '기본 브라우저로 열었어요. 거기서 Google 로그인해 주세요'
+    )
   }
   if (code === 'permission-denied' || message.includes('permission-denied')) {
     return 'Firestorestore 규칙에 users/nicknames 권한이 필요해요 (콘솔에서 규칙 게시)'
@@ -327,25 +350,88 @@ export async function pushStatsIfLoggedIn(stats: PersonalStats): Promise<void> {
 export type GoogleSignInResult =
   | { status: 'ready'; profile: UserProfile }
   | { status: 'needs-nickname'; setup: NicknameSetup }
+  | { status: 'redirecting' }
+
+function googleProvider(): GoogleAuthProvider {
+  const provider = new GoogleAuthProvider()
+  provider.setCustomParameters({ prompt: 'select_account' })
+  provider.addScope('profile')
+  provider.addScope('email')
+  return provider
+}
+
+async function finishGoogleUser(user: User): Promise<GoogleSignInResult> {
+  const existing = await resumeExistingProfile(user)
+  if (existing) return { status: 'ready', profile: existing }
+  return { status: 'needs-nickname', setup: makeSetup(user) }
+}
+
+/** 리다이렉트 로그인 복귀 처리 (앱 시작 시 1회) */
+export async function consumeGoogleRedirect(): Promise<GoogleSignInResult | null> {
+  if (!isFirebaseConfigured()) return null
+  try {
+    const result = await getRedirectResult(
+      getFirebaseAuth(),
+      browserPopupRedirectResolver,
+    )
+    if (!result?.user) return null
+    return finishGoogleUser(result.user)
+  } catch (err) {
+    console.error('[auth] redirect result failed', err)
+    throw err
+  }
+}
 
 export async function signInWithGoogle(): Promise<GoogleSignInResult> {
   if (!isFirebaseConfigured()) {
     throw new Error('Firebase 설정이 없습니다')
   }
-  const provider = new GoogleAuthProvider()
-  provider.setCustomParameters({ prompt: 'select_account' })
-  provider.addScope('profile')
-  provider.addScope('email')
-  const result = await signInWithPopup(
-    getFirebaseAuth(),
-    provider,
-    browserPopupRedirectResolver,
-  )
 
-  const existing = await resumeExistingProfile(result.user)
-  if (existing) return { status: 'ready', profile: existing }
+  // 카톡 등 인앱: Google이 OAuth 자체를 차단 → 외부 브라우저로 보냄
+  if (isInAppBrowser()) {
+    const opened = openInExternalBrowser()
+    const err = new Error(
+      opened
+        ? 'auth/open-external'
+        : inAppLoginHint() || '기본 브라우저에서 열어 주세요',
+    ) as Error & { code: string }
+    err.code = opened ? 'auth/open-external' : 'auth/popup-blocked'
+    throw err
+  }
 
-  return { status: 'needs-nickname', setup: makeSetup(result.user) }
+  const auth = getFirebaseAuth()
+  const provider = googleProvider()
+
+  if (preferAuthRedirect()) {
+    await signInWithRedirect(auth, provider, browserPopupRedirectResolver)
+    return { status: 'redirecting' }
+  }
+
+  try {
+    const result = await signInWithPopup(
+      auth,
+      provider,
+      browserPopupRedirectResolver,
+    )
+    return finishGoogleUser(result.user)
+  } catch (err) {
+    const code =
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as { code: string }).code)
+        : ''
+    if (
+      code === 'auth/popup-blocked' ||
+      code === 'auth/popup-closed-by-user' ||
+      code === 'auth/cancelled-popup-request'
+    ) {
+      // 팝업 실패 시 리다이렉트로 재시도 (모바일·제한 브라우저)
+      if (code === 'auth/popup-blocked') {
+        await signInWithRedirect(auth, provider, browserPopupRedirectResolver)
+        return { status: 'redirecting' }
+      }
+    }
+    throw err
+  }
 }
 
 export async function signOutUser(): Promise<void> {

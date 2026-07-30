@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { UserProfile } from '../lib/auth'
 import {
+  inAppLoginHint,
+  isInAppBrowser,
+  isKakaoTalkBrowser,
+  openInExternalBrowser,
+} from '../lib/browser'
+import {
   avgWinAttempts,
   getPersonalStats,
   winRate,
@@ -14,6 +20,7 @@ type Props = {
   authEnabled: boolean
   busy?: boolean
   error?: string | null
+  inAppHint?: string
   onClose: () => void
   onSignIn: () => void
   onSignOut: () => void
@@ -26,6 +33,7 @@ export function ProfileModal({
   authEnabled,
   busy,
   error,
+  inAppHint,
   onClose,
   onSignIn,
   onSignOut,
@@ -37,6 +45,12 @@ export function ProfileModal({
   const [stats, setStats] = useState<PersonalStats>(() => getPersonalStats())
   const ignoreCloseUntil = useRef(0)
   const backdropPress = useRef(false)
+  const hint =
+    inAppHint ||
+    (typeof navigator !== 'undefined' && isInAppBrowser()
+      ? inAppLoginHint()
+      : '')
+  const inKakao = typeof navigator !== 'undefined' && isKakaoTalkBrowser()
 
   useEffect(() => {
     if (!open) {
@@ -278,14 +292,25 @@ export function ProfileModal({
               </div>
             </div>
             <p className="profile-guest-note">위 숫자는 이 브라우저 기준이에요</p>
+            {hint && <p className="profile-inapp-hint">{hint}</p>}
             {authEnabled ? (
               <button
                 type="button"
                 className="cta"
-                onClick={onSignIn}
+                onClick={() => {
+                  if (inKakao) {
+                    openInExternalBrowser()
+                    return
+                  }
+                  onSignIn()
+                }}
                 disabled={busy}
               >
-                {busy ? '연결 중...' : 'Google 로그인'}
+                {busy
+                  ? '연결 중...'
+                  : inKakao
+                    ? '브라우저에서 로그인'
+                    : 'Google 로그인'}
               </button>
             ) : (
               <p className="profile-guest-note">로그인을 아직 설정하지 않았어요</p>
