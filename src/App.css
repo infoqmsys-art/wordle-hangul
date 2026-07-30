@@ -1600,134 +1600,84 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 24px 16px 40px;
-  text-align: center;
+  justify-content: flex-start;
+  gap: 14px;
+  padding: 8px 0 24px;
 }
 
-.diff-kicker {
-  margin: 0;
-  color: #4a7dff;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-.diff-title {
-  margin: 8px 0 0;
-  font-size: 1.6rem;
-  font-weight: 800;
-}
-
-.diff-sub {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.mode-block {
-  margin-top: 28px;
+.mode-panel {
+  border: 1.5px solid #e6ebf5;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fbfcff 0%, #f4f7fd 100%);
+  padding: 18px 16px;
   text-align: left;
 }
 
-.mode-heading {
+.mode-panel.practice {
+  background: linear-gradient(180deg, #fffcf8 0%, #fff6ee 100%);
+  border-color: #f0e4d6;
+}
+
+.mode-panel-head h2 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.35rem;
   font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
-.mode-desc {
-  margin: 4px 0 0;
+.mode-panel-head p {
+  margin: 6px 0 0;
   color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.mode-block .diff-cards {
-  margin-top: 12px;
-}
-
-.mode-auth {
-  margin-top: 28px;
-  text-align: center;
-}
-
-.mode-google-btn {
-  border: 1.5px solid #dadce0;
-  border-radius: 999px;
-  background: #fff;
-  padding: 10px 18px;
-  font: inherit;
-  font-size: 0.9rem;
-  font-weight: 700;
-  cursor: pointer;
-  color: var(--ink);
-}
-
-.mode-google-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.mode-auth-note {
-  margin: 8px 0 0;
-  font-size: 0.75rem;
-  color: var(--muted);
+  font-size: 0.85rem;
   line-height: 1.4;
 }
 
-.mode-auth-note.mode-auth-inline {
-  margin-top: 10px;
+.mode-diff-row {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
-.diff-cards {
-  margin-top: 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.diff-card {
-  border: 1.5px solid #e8e8e8;
-  border-radius: 16px;
+.mode-diff-btn {
+  border: 1.5px solid #dfe7f5;
+  border-radius: 14px;
   background: #fff;
-  padding: 18px 16px;
+  padding: 14px 12px;
   text-align: left;
   cursor: pointer;
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.diff-card:hover {
+.mode-diff-btn:hover {
   border-color: #4a7dff;
 }
 
-.diff-card.hard:hover {
-  border-color: #f4a261;
+.mode-diff-btn.hard {
+  border-color: #f0e0cc;
 }
 
-.diff-badge {
-  display: inline-block;
+.mode-diff-btn.hard:hover {
+  border-color: #e0892f;
+}
+
+.mode-diff-btn span {
   font-size: 0.75rem;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: #eef3ff;
+  font-weight: 800;
   color: #4a7dff;
-  margin-bottom: 8px;
 }
 
-.diff-card.hard .diff-badge {
-  background: #fff3e8;
+.mode-diff-btn.hard span {
   color: #e0892f;
 }
 
-.diff-card strong {
-  display: block;
-  font-size: 1.2rem;
-  margin-bottom: 4px;
-}
-
-.diff-card p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.88rem;
+.mode-diff-btn strong {
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: var(--ink);
 }
 
 .rank-modal .modal-sub {

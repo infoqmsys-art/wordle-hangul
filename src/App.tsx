@@ -148,7 +148,7 @@ function App() {
         <header className="header">
           {headerAuthButton}
           <div className="brand">
-            <h1>푸들푸들 오늘의 단어</h1>
+            <h1>푸들푸들</h1>
           </div>
           <button
             type="button"
