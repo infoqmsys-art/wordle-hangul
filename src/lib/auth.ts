@@ -1,19 +1,11 @@
 ﻿import {
-  GoogleAuthProvider,
-  browserPopupRedirectResolver,
-  getRedirectResult,
+  createUserWithEmailAndPassword,
+  deleteUser,
   onAuthStateChanged,
-  signInWithPopup,
-  signInWithRedirect,
+  signInWithEmailAndPassword,
   signOut,
   type User,
 } from 'firebase/auth'
-import {
-  inAppLoginHint,
-  isInAppBrowser,
-  openInExternalBrowser,
-  preferAuthRedirect,
-} from './browser'
 import {
   doc,
   getDoc,
@@ -36,17 +28,24 @@ export type UserProfile = {
   photoURL: string | null
 } & PersonalStats
 
-export type NicknameSetup = {
-  user: User
-  suggested: string
-  previousName: string
-  hasLocalStats: boolean
-}
+/** Firebase Email/Password용 내부 주소 (화면에 안 보임) */
+const AUTH_EMAIL_DOMAIN = 'auth.wordle-hangul.web.app'
 
 const USERS = 'users'
 const NICKNAMES = 'nicknames'
+const MIN_PASSWORD = 6
 
 let activeUid: string | null = null
+/** 가입/로그인 처리 중 onAuthStateChanged가 상태를 덮어쓰지 않게 */
+let authMutationDepth = 0
+
+function beginAuthMutation() {
+  authMutationDepth += 1
+}
+
+function endAuthMutation() {
+  authMutationDepth = Math.max(0, authMutationDepth - 1)
+}
 
 export function authErrorMessage(err: unknown): string | null {
   const code =
@@ -56,60 +55,57 @@ export function authErrorMessage(err: unknown): string | null {
   const message =
     err instanceof Error ? err.message : typeof err === 'string' ? err : ''
 
-  if (
-    code === 'auth/popup-closed-by-user' ||
-    code === 'auth/cancelled-popup-request'
-  ) {
-    return null
-  }
   if (code === 'nickname-taken' || message.includes('nickname-taken')) {
     return '이미 사용 중인 닉네임이에요. 다른 이름을 골라 주세요'
   }
-  if (code === 'auth/operation-not-allowed') {
-    return 'Firebase에서 Google 로그인을 아직 켜지 않았어요'
-  }
-  if (code === 'auth/unauthorized-domain') {
-    const host =
-      typeof window !== 'undefined' ? window.location.hostname : ''
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
-      return `이 주소(${host})가 Firebase 허용 도메인에 없어요. Authentication → 설정 → 승인된 도메인에 추가해 주세요`
-    }
-    return '이 주소가 Firebase 허용 도메인에 없어요. Authentication → 설정 → 승인된 도메인에 localhost / 127.0.0.1 / 배포 도메인을 확인해 주세요'
-  }
-  if (code === 'auth/popup-blocked') {
-    return '팝업이 막혔어요. 기본 브라우저(Chrome/Safari)에서 다시 시도해 주세요'
+  if (code === 'auth/email-already-in-use') {
+    return '이미 가입된 닉네임이에요. 로그인 해 주세요'
   }
   if (
-    code === 'auth/web-storage-unsupported' ||
-    message.includes('disallowed_useragent')
+    code === 'auth/invalid-credential' ||
+    code === 'auth/wrong-password' ||
+    code === 'auth/user-not-found' ||
+    code === 'auth/invalid-email'
   ) {
-    return (
-      inAppLoginHint() ||
-      '이 브라우저에서는 Google 로그인을 쓸 수 없어요. Chrome/Safari로 열어 주세요'
-    )
+    return '닉네임 또는 비밀번호가 맞지 않아요'
   }
-  if (code === 'auth/open-external') {
-    return (
-      inAppLoginHint() ||
-      '기본 브라우저로 열었어요. 거기서 Google 로그인해 주세요'
-    )
+  if (code === 'auth/weak-password') {
+    return `비밀번호는 ${MIN_PASSWORD}자만 되면 돼요 (아무 글자나 OK)`
+  }
+  if (code === 'auth/too-many-requests') {
+    return '시도가 너무 많아요. 잠시 후 다시 해 주세요'
+  }
+  if (code === 'auth/operation-not-allowed') {
+    return 'Firebase에서 이메일/비밀번호 로그인을 아직 켜지 않았어요'
+  }
+  if (code === 'auth/network-request-failed') {
+    return '네트워크 연결을 확인해 주세요'
   }
   if (code === 'permission-denied' || message.includes('permission-denied')) {
     return 'Firestorestore 규칙에 users/nicknames 권한이 필요해요 (콘솔에서 규칙 게시)'
   }
-  if (
-    message.includes('requested action is invalid') ||
-    message.includes('invalid-action')
-  ) {
-    return 'Google 로그인 설정이 필요해요 (Firebase Authentication → Google 사용)'
+  if (message.includes('닉네임을 입력') || message.includes('비밀번호')) {
+    return message
   }
-  if (message.includes('닉네임을 입력')) return message
   if (code) return `처리 실패 (${code})`
   return '요청 처리에 실패했어요'
 }
 
 function nicknameKey(name: string): string {
   return name.trim().normalize('NFC').toLocaleLowerCase('ko-KR')
+}
+
+/** 닉네임 → Firebase Auth 이메일 (일관된 매핑) */
+export function nicknameToAuthEmail(nickname: string): string {
+  const key = nicknameKey(nickname)
+  const bytes = new TextEncoder().encode(key)
+  let binary = ''
+  for (const b of bytes) binary += String.fromCharCode(b)
+  const encoded = btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+  return `${encoded}@${AUTH_EMAIL_DOMAIN}`
 }
 
 function parseCloudStats(data: Record<string, unknown>): PersonalStats {
@@ -129,16 +125,6 @@ function mergeStats(local: PersonalStats, cloud: PersonalStats): PersonalStats {
     ...base,
     maxStreak: Math.max(local.maxStreak, cloud.maxStreak, base.maxStreak),
   }
-}
-
-function suggestNickname(user: User): string {
-  const previous = getLastName().trim()
-  if (previous) return previous.slice(0, 20)
-  const fromGoogle = user.displayName?.trim()
-  if (fromGoogle) return fromGoogle.slice(0, 20)
-  const fromEmail = user.email?.split('@')[0]?.trim()
-  if (fromEmail) return fromEmail.slice(0, 20)
-  return ''
 }
 
 async function readCloudProfile(
@@ -164,20 +150,9 @@ function toProfile(
   return {
     uid: user.uid,
     nickname,
-    email: user.email,
+    email: null,
     photoURL: user.photoURL,
     ...stats,
-  }
-}
-
-function makeSetup(user: User): NicknameSetup {
-  const previousName = getLastName().trim()
-  const local = getPersonalStats()
-  return {
-    user,
-    suggested: suggestNickname(user),
-    previousName,
-    hasLocalStats: local.played > 0 || local.currentStreak > 0,
   }
 }
 
@@ -185,6 +160,18 @@ function nicknameTakenError(): Error {
   const err = new Error('nickname-taken') as Error & { code: string }
   err.code = 'nickname-taken'
   return err
+}
+
+function validateCredentials(nickname: string, password: string): string {
+  const name = nickname.trim()
+  if (!name) throw new Error('닉네임을 입력해 주세요')
+  if (name.length > 20) throw new Error('닉네임은 20자까지예요')
+  if (password.length < MIN_PASSWORD) {
+    throw new Error(
+      `비밀번호는 ${MIN_PASSWORD}자만 되면 돼요 (아무 글자나 OK)`,
+    )
+  }
+  return name.slice(0, 20)
 }
 
 async function saveProfileWithUniqueNickname(input: {
@@ -273,7 +260,7 @@ export async function resumeExistingProfile(
   return toProfile(user, cloud.nickname, stats)
 }
 
-export async function completeNicknameSetup(
+async function completeNicknameSetup(
   user: User,
   rawName: string,
 ): Promise<UserProfile> {
@@ -290,6 +277,65 @@ export async function completeNicknameSetup(
   setPersonalStats(local)
   activeUid = user.uid
   return toProfile(user, nickname, local)
+}
+
+/** 닉네임 + 비밀번호로 회원가입 (인앱 브라우저에서도 동작) */
+export async function signUpWithNickname(
+  rawNickname: string,
+  password: string,
+): Promise<UserProfile> {
+  if (!isFirebaseConfigured()) throw new Error('Firebase 설정이 없습니다')
+
+  const nickname = validateCredentials(rawNickname, password)
+  const email = nicknameToAuthEmail(nickname)
+  const nickRef = doc(getDb(), NICKNAMES, nicknameKey(nickname))
+  const taken = await getDoc(nickRef)
+  if (taken.exists()) throw nicknameTakenError()
+
+  beginAuthMutation()
+  try {
+    const auth = getFirebaseAuth()
+    const cred = await createUserWithEmailAndPassword(auth, email, password)
+
+    try {
+      return await completeNicknameSetup(cred.user, nickname)
+    } catch (err) {
+      try {
+        await deleteUser(cred.user)
+      } catch {
+        await signOut(auth).catch(() => undefined)
+      }
+      throw err
+    }
+  } finally {
+    endAuthMutation()
+  }
+}
+
+/** 닉네임 + 비밀번호로 로그인 */
+export async function signInWithNickname(
+  rawNickname: string,
+  password: string,
+): Promise<UserProfile> {
+  if (!isFirebaseConfigured()) throw new Error('Firebase 설정이 없습니다')
+
+  const nickname = validateCredentials(rawNickname, password)
+  const email = nicknameToAuthEmail(nickname)
+
+  beginAuthMutation()
+  try {
+    const cred = await signInWithEmailAndPassword(
+      getFirebaseAuth(),
+      email,
+      password,
+    )
+
+    const existing = await resumeExistingProfile(cred.user)
+    if (existing) return existing
+    return completeNicknameSetup(cred.user, nickname)
+  } finally {
+    endAuthMutation()
+  }
 }
 
 export async function updateNickname(
@@ -352,83 +398,6 @@ export async function pushStatsIfLoggedIn(stats: PersonalStats): Promise<void> {
   }
 }
 
-export type GoogleSignInResult =
-  | { status: 'ready'; profile: UserProfile }
-  | { status: 'needs-nickname'; setup: NicknameSetup }
-  | { status: 'redirecting' }
-  | { status: 'needs-external'; hint: string }
-
-function googleProvider(): GoogleAuthProvider {
-  const provider = new GoogleAuthProvider()
-  provider.setCustomParameters({ prompt: 'select_account' })
-  provider.addScope('profile')
-  provider.addScope('email')
-  return provider
-}
-
-async function finishGoogleUser(user: User): Promise<GoogleSignInResult> {
-  const existing = await resumeExistingProfile(user)
-  if (existing) return { status: 'ready', profile: existing }
-  return { status: 'needs-nickname', setup: makeSetup(user) }
-}
-
-/** 리다이렉트 로그인 복귀 처리 (앱 시작 시 1회) */
-export async function consumeGoogleRedirect(): Promise<GoogleSignInResult | null> {
-  if (!isFirebaseConfigured()) return null
-  try {
-    const result = await getRedirectResult(getFirebaseAuth())
-    if (!result?.user) return null
-    return finishGoogleUser(result.user)
-  } catch (err) {
-    console.error('[auth] redirect result failed', err)
-    throw err
-  }
-}
-
-export async function signInWithGoogle(): Promise<GoogleSignInResult> {
-  if (!isFirebaseConfigured()) {
-    throw new Error('Firebase 설정이 없습니다')
-  }
-
-  // 카톡 등 인앱: Google이 OAuth 자체를 차단 → 외부 브라우저 유도
-  if (isInAppBrowser()) {
-    openInExternalBrowser()
-    return {
-      status: 'needs-external',
-      hint:
-        inAppLoginHint() ||
-        '기본 브라우저(Chrome/Safari)로 열어 다시 로그인해 주세요',
-    }
-  }
-
-  const auth = getFirebaseAuth()
-  const provider = googleProvider()
-
-  if (preferAuthRedirect()) {
-    await signInWithRedirect(auth, provider)
-    return { status: 'redirecting' }
-  }
-
-  try {
-    const result = await signInWithPopup(
-      auth,
-      provider,
-      browserPopupRedirectResolver,
-    )
-    return finishGoogleUser(result.user)
-  } catch (err) {
-    const code =
-      err && typeof err === 'object' && 'code' in err
-        ? String((err as { code: string }).code)
-        : ''
-    if (code === 'auth/popup-blocked') {
-      await signInWithRedirect(auth, provider)
-      return { status: 'redirecting' }
-    }
-    throw err
-  }
-}
-
 export async function signOutUser(): Promise<void> {
   if (!isFirebaseConfigured()) return
   activeUid = null
@@ -438,7 +407,6 @@ export async function signOutUser(): Promise<void> {
 export type AuthListenerState =
   | { status: 'signed-out' }
   | { status: 'ready'; profile: UserProfile }
-  | { status: 'needs-nickname'; setup: NicknameSetup }
 
 export function subscribeAuth(
   onChange: (state: AuthListenerState) => void,
@@ -460,9 +428,15 @@ export function subscribeAuth(
         onChange({ status: 'ready', profile: existing })
         return
       }
-      onChange({ status: 'needs-nickname', setup: makeSetup(user) })
+      // 가입 직후 프로필 저장 중이면 건드리지 않음
+      if (authMutationDepth > 0) return
+      // 프로필 없는 잔여 계정(예: 예전 Google)은 로그아웃
+      activeUid = null
+      await signOut(getFirebaseAuth())
+      onChange({ status: 'signed-out' })
     } catch {
-      onChange({ status: 'needs-nickname', setup: makeSetup(user) })
+      if (authMutationDepth > 0) return
+      onChange({ status: 'signed-out' })
     }
   })
 }

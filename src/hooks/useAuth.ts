@@ -1,31 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   authErrorMessage,
-  completeNicknameSetup,
-  consumeGoogleRedirect,
   isAuthEnabled,
-  signInWithGoogle,
+  signInWithNickname,
   signOutUser,
+  signUpWithNickname,
   subscribeAuth,
   updateNickname,
-  type NicknameSetup,
   type UserProfile,
 } from '../lib/auth'
-import { inAppLoginHint, isInAppBrowser } from '../lib/browser'
 
 export function useAuth() {
   const [user, setUser] = useState<UserProfile | null>(null)
-  const [nicknameSetup, setNicknameSetup] = useState<NicknameSetup | null>(
-    null,
-  )
   const [ready, setReady] = useState(!isAuthEnabled())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [inAppHint] = useState(() =>
-    typeof navigator !== 'undefined' && isInAppBrowser()
-      ? inAppLoginHint()
-      : '',
-  )
 
   useEffect(() => {
     if (!isAuthEnabled()) {
@@ -33,70 +22,27 @@ export function useAuth() {
       return
     }
 
-    let cancelled = false
-
-    void (async () => {
-      try {
-        const redirected = await consumeGoogleRedirect()
-        if (cancelled || !redirected) return
-        if (redirected.status === 'ready') {
-          setUser(redirected.profile)
-          setNicknameSetup(null)
-        } else if (redirected.status === 'needs-nickname') {
-          setUser(null)
-          setNicknameSetup(redirected.setup)
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const message = authErrorMessage(err)
-          if (message) setError(message)
-        }
-      }
-    })()
-
     const unsub = subscribeAuth((state) => {
       if (state.status === 'signed-out') {
         setUser(null)
-        setNicknameSetup(null)
-      } else if (state.status === 'ready') {
-        setUser(state.profile)
-        setNicknameSetup(null)
       } else {
-        setUser(null)
-        setNicknameSetup(state.setup)
+        setUser(state.profile)
       }
       setReady(true)
     })
 
-    return () => {
-      cancelled = true
-      unsub()
-    }
+    return unsub
   }, [])
 
-  const signIn = useCallback(async () => {
+  const signIn = useCallback(async (nickname: string, password: string) => {
     setBusy(true)
     setError(null)
     try {
-      const result = await signInWithGoogle()
-      if (result.status === 'redirecting') {
-        setError('Google 로그인 화면으로 이동 중...')
-        return null
-      }
-      if (result.status === 'needs-external') {
-        setError(result.hint)
-        return null
-      }
-      if (result.status === 'ready') {
-        setUser(result.profile)
-        setNicknameSetup(null)
-        return result.profile
-      }
-      setUser(null)
-      setNicknameSetup(result.setup)
-      return null
+      const profile = await signInWithNickname(nickname, password)
+      setUser(profile)
+      return profile
     } catch (err) {
-      console.error('[auth] Google sign-in failed', err)
+      console.error('[auth] sign-in failed', err)
       const message = authErrorMessage(err)
       if (message) setError(message)
       return null
@@ -105,30 +51,22 @@ export function useAuth() {
     }
   }, [])
 
-  const submitNickname = useCallback(
-    async (nickname: string) => {
-      if (!nicknameSetup) return null
-      setBusy(true)
-      setError(null)
-      try {
-        const profile = await completeNicknameSetup(
-          nicknameSetup.user,
-          nickname,
-        )
-        setUser(profile)
-        setNicknameSetup(null)
-        return profile
-      } catch (err) {
-        console.error('[auth] nickname setup failed', err)
-        const message = authErrorMessage(err) ?? '닉네임 저장에 실패했어요'
-        setError(message)
-        return null
-      } finally {
-        setBusy(false)
-      }
-    },
-    [nicknameSetup],
-  )
+  const signUp = useCallback(async (nickname: string, password: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const profile = await signUpWithNickname(nickname, password)
+      setUser(profile)
+      return profile
+    } catch (err) {
+      console.error('[auth] sign-up failed', err)
+      const message = authErrorMessage(err)
+      if (message) setError(message)
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }, [])
 
   const rename = useCallback(
     async (nickname: string) => {
@@ -151,27 +89,12 @@ export function useAuth() {
     [user],
   )
 
-  const cancelNicknameSetup = useCallback(async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      await signOutUser()
-      setUser(null)
-      setNicknameSetup(null)
-    } catch {
-      setError('취소에 실패했어요')
-    } finally {
-      setBusy(false)
-    }
-  }, [])
-
   const signOut = useCallback(async () => {
     setBusy(true)
     setError(null)
     try {
       await signOutUser()
       setUser(null)
-      setNicknameSetup(null)
     } catch {
       setError('로그아웃에 실패했어요')
     } finally {
@@ -181,16 +104,13 @@ export function useAuth() {
 
   return {
     user,
-    nicknameSetup,
     ready,
     busy,
     error,
-    inAppHint,
     clearError: () => setError(null),
     signIn,
-    submitNickname,
+    signUp,
     rename,
-    cancelNicknameSetup,
     signOut,
     isLoggedIn: Boolean(user),
     enabled: isAuthEnabled(),

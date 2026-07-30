@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { AuthStatusBar } from './components/AuthStatusBar'
 import { Board } from './components/Board'
 import { Confetti } from './components/Confetti'
 import { HistoryModal } from './components/HistoryModal'
 import { HowTo } from './components/HowTo'
 import { Keyboard } from './components/Keyboard'
 import { ModeSelect } from './components/ModeSelect'
-import { NicknameSetupModal } from './components/NicknameSetupModal'
 import { ProfileModal } from './components/ProfileModal'
 import { RankingModal } from './components/RankingModal'
 import { DIFFICULTY_META } from './data/words'
@@ -143,17 +141,19 @@ function App() {
       authEnabled={auth.enabled}
       busy={auth.busy}
       error={auth.error}
-      inAppHint={auth.inAppHint}
       onClose={() => {
         setProfileOpen(false)
         auth.clearError()
       }}
-      onSignIn={async () => {
-        const profile = await auth.signIn()
-        if (profile) {
-          game.refreshStreak()
-          setProfileOpen(false)
-        }
+      onSignIn={async (nickname, password) => {
+        const profile = await auth.signIn(nickname, password)
+        if (profile) game.refreshStreak()
+        return profile
+      }}
+      onSignUp={async (nickname, password) => {
+        const profile = await auth.signUp(nickname, password)
+        if (profile) game.refreshStreak()
+        return profile
       }}
       onSignOut={async () => {
         await auth.signOut()
@@ -188,19 +188,7 @@ function App() {
       type="button"
       className="header-auth"
       aria-label="로그인"
-      onClick={() => {
-        openProfile()
-        // 카톡 인앱이 아니면 바로 Google 로그인까지 진행
-        if (!auth.inAppHint) {
-          void (async () => {
-            const profile = await auth.signIn()
-            if (profile) {
-              game.refreshStreak()
-              setProfileOpen(false)
-            }
-          })()
-        }
-      }}
+      onClick={openProfile}
     >
       로그인
     </button>
@@ -208,11 +196,11 @@ function App() {
 
   if (game.needMode) {
     return (
-      <div className="app">
+      <div className="app is-home">
         <header className="header">
           {headerAuthButton}
-          <div className="brand">
-            <h1>푸들푸들</h1>
+          <div className="brand brand-home" aria-hidden>
+            <span className="brand-home-dot" />
           </div>
           <button
             type="button"
@@ -228,12 +216,13 @@ function App() {
               <button
                 type="button"
                 onClick={() => {
-                  setHowto(true)
+                  game.changeMode()
                   setMenuOpen(false)
                 }}
               >
-                게임 방법
+                홈
               </button>
+              {profileMenuItem}
               <button
                 type="button"
                 onClick={() => {
@@ -246,27 +235,23 @@ function App() {
               <button
                 type="button"
                 onClick={() => {
-                  setHistoryOpen(true)
+                  setHowto(true)
                   setMenuOpen(false)
                 }}
               >
-                기록 보기
+                게임 방법
               </button>
-              {profileMenuItem}
             </div>
           )}
         </header>
-        {auth.user && (
-          <AuthStatusBar
-            nickname={auth.user.nickname}
-            photoURL={auth.user.photoURL}
-            streak={game.currentStreak}
-            onClick={openProfile}
-          />
-        )}
-        <ModeSelect open onSelect={game.startGame} />
+        <ModeSelect
+          open
+          onSelect={game.startGame}
+          nickname={auth.user?.nickname}
+          streak={game.currentStreak}
+        />
         {game.toast && <div className="toast">{game.toast}</div>}
-        {auth.error && !profileOpen && !auth.nicknameSetup && (
+        {auth.error && !profileOpen && (
           <div className="toast">{auth.error}</div>
         )}
         <HowTo
@@ -280,21 +265,12 @@ function App() {
           open={rankingOpen}
           onClose={() => setRankingOpen(false)}
           initialDifficulty="easy"
+          onOpenHistory={() => {
+            setRankingOpen(false)
+            setHistoryOpen(true)
+          }}
         />
         {profileModal}
-        <NicknameSetupModal
-          open={Boolean(auth.nicknameSetup)}
-          suggested={auth.nicknameSetup?.suggested ?? ''}
-          previousName={auth.nicknameSetup?.previousName ?? ''}
-          hasLocalStats={Boolean(auth.nicknameSetup?.hasLocalStats)}
-          busy={auth.busy}
-          error={auth.error}
-          onSubmit={async (name) => {
-            const profile = await auth.submitNickname(name)
-            if (profile) game.refreshStreak()
-          }}
-          onCancel={() => auth.cancelNicknameSetup()}
-        />
       </div>
     )
   }
@@ -330,12 +306,13 @@ function App() {
             <button
               type="button"
               onClick={() => {
-                setHowto(true)
+                game.changeMode()
                 setMenuOpen(false)
               }}
             >
-              게임 방법
+              홈
             </button>
+            {profileMenuItem}
             <button
               type="button"
               onClick={() => {
@@ -348,20 +325,11 @@ function App() {
             <button
               type="button"
               onClick={() => {
-                setHistoryOpen(true)
+                setHowto(true)
                 setMenuOpen(false)
               }}
             >
-              기록 보기
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                game.changeMode()
-                setMenuOpen(false)
-              }}
-            >
-              홈
+              게임 방법
             </button>
             {finished && (
               <button
@@ -374,19 +342,9 @@ function App() {
                 {game.playMode === 'daily' ? '연습 이어하기' : '다음 문제 풀기'}
               </button>
             )}
-            {profileMenuItem}
           </div>
         )}
       </header>
-
-      {auth.user && (
-        <AuthStatusBar
-          nickname={auth.user.nickname}
-          photoURL={auth.user.photoURL}
-          streak={game.currentStreak}
-          onClick={openProfile}
-        />
-      )}
 
       <main className="main">
         <Board
@@ -527,7 +485,7 @@ function App() {
       </main>
 
       {game.toast && <div className="toast">{game.toast}</div>}
-      {auth.error && !profileOpen && !auth.nicknameSetup && (
+      {auth.error && !profileOpen && (
         <div className="toast">{auth.error}</div>
       )}
       <Confetti active={game.celebrate} streak={game.currentStreak} />
@@ -543,21 +501,12 @@ function App() {
         open={rankingOpen}
         onClose={() => setRankingOpen(false)}
         initialDifficulty={game.difficulty ?? 'easy'}
+        onOpenHistory={() => {
+          setRankingOpen(false)
+          setHistoryOpen(true)
+        }}
       />
       {profileModal}
-      <NicknameSetupModal
-        open={Boolean(auth.nicknameSetup)}
-        suggested={auth.nicknameSetup?.suggested ?? ''}
-        previousName={auth.nicknameSetup?.previousName ?? ''}
-        hasLocalStats={Boolean(auth.nicknameSetup?.hasLocalStats)}
-        busy={auth.busy}
-        error={auth.error}
-        onSubmit={async (name) => {
-          const profile = await auth.submitNickname(name)
-          if (profile) game.refreshStreak()
-        }}
-        onCancel={() => auth.cancelNicknameSetup()}
-      />
     </div>
   )
 }

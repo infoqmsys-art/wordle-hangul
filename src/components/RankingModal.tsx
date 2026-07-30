@@ -13,6 +13,7 @@ type Props = {
   open: boolean
   onClose: () => void
   initialDifficulty?: Difficulty
+  onOpenHistory?: () => void
 }
 
 const MODE_META: Record<RankMode, { label: string; sub: string }> = {
@@ -34,6 +35,7 @@ export function RankingModal({
   open,
   onClose,
   initialDifficulty = 'easy',
+  onOpenHistory,
 }: Props) {
   const [tab, setTab] = useState<Difficulty>(initialDifficulty)
   const [mode, setMode] = useState<RankMode>('wins')
@@ -185,9 +187,20 @@ export function RankingModal({
           </ol>
         )}
 
-        <button type="button" className="btn-primary full" onClick={onClose}>
-          닫기
-        </button>
+        <div className="rank-footer">
+          {onOpenHistory && (
+            <button
+              type="button"
+              className="cta cta-secondary full"
+              onClick={onOpenHistory}
+            >
+              전체 기록보기
+            </button>
+          )}
+          <button type="button" className="btn-primary full" onClick={onClose}>
+            닫기
+          </button>
+        </div>
       </div>
     </div>
   )

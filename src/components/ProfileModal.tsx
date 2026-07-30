@@ -1,20 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { UserProfile } from '../lib/auth'
-import {
-  cleanCurrentUrl,
-  copyText,
-  inAppLoginHint,
-  isInAppBrowser,
-  isKakaoTalkBrowser,
-  openInExternalBrowser,
-} from '../lib/browser'
+import { formatSeconds, getLastName } from '../lib/history'
 import {
   avgWinAttempts,
   getPersonalStats,
   winRate,
   type PersonalStats,
 } from '../lib/stats'
-import { formatSeconds } from '../lib/history'
+
+type AuthMode = 'login' | 'signup'
 
 type Props = {
   open: boolean
@@ -22,9 +16,9 @@ type Props = {
   authEnabled: boolean
   busy?: boolean
   error?: string | null
-  inAppHint?: string
   onClose: () => void
-  onSignIn: () => void
+  onSignIn: (nickname: string, password: string) => Promise<UserProfile | null>
+  onSignUp: (nickname: string, password: string) => Promise<UserProfile | null>
   onSignOut: () => void
   onUpdateNickname: (nickname: string) => Promise<boolean>
 }
@@ -35,26 +29,21 @@ export function ProfileModal({
   authEnabled,
   busy,
   error,
-  inAppHint,
   onClose,
   onSignIn,
+  onSignUp,
   onSignOut,
   onUpdateNickname,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(profile?.nickname ?? '')
   const [localError, setLocalError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
   const [stats, setStats] = useState<PersonalStats>(() => getPersonalStats())
+  const [authMode, setAuthMode] = useState<AuthMode>('login')
+  const [nickname, setNickname] = useState('')
+  const [password, setPassword] = useState('')
   const ignoreCloseUntil = useRef(0)
   const backdropPress = useRef(false)
-  const hint =
-    inAppHint ||
-    (typeof navigator !== 'undefined' && isInAppBrowser()
-      ? inAppLoginHint()
-      : '')
-  const inApp = typeof navigator !== 'undefined' && isInAppBrowser()
-  const inKakao = typeof navigator !== 'undefined' && isKakaoTalkBrowser()
 
   useEffect(() => {
     if (!open) {
@@ -64,9 +53,10 @@ export function ProfileModal({
     setEditing(false)
     setName(profile?.nickname ?? '')
     setLocalError(null)
-    setCopied(false)
     setStats(profile ?? getPersonalStats())
-    // 로그인 버튼을 누른 같은 제스처가 배경 닫기로 이어지지 않게
+    setAuthMode('login')
+    setNickname(getLastName().trim())
+    setPassword('')
     ignoreCloseUntil.current = Date.now() + 800
   }, [open, profile])
 
@@ -94,6 +84,27 @@ export function ProfileModal({
     if (ok) setEditing(false)
   }
 
+  const submitAuth = async () => {
+    setLocalError(null)
+    const nick = nickname.trim()
+    if (!nick) {
+      setLocalError('닉네임을 입력해 주세요')
+      return
+    }
+    if (password.length < 6) {
+      setLocalError('비밀번호는 6자만 되면 돼요 (아무 글자나 OK)')
+      return
+    }
+    const profileNext =
+      authMode === 'signup'
+        ? await onSignUp(nick, password)
+        : await onSignIn(nick, password)
+    if (profileNext) {
+      setPassword('')
+      onClose()
+    }
+  }
+
   return (
     <div
       className="modal-backdrop profile-backdrop"
@@ -109,10 +120,10 @@ export function ProfileModal({
         }
       }}
       onClick={(e) => {
-        // click만으로 닫지 않음 (열기 직후 잔여 click 방지)
         e.stopPropagation()
       }}
-    >      <div
+    >
+      <div
         className="profile-panel"
         role="dialog"
         aria-modal="true"
@@ -134,20 +145,11 @@ export function ProfileModal({
         {profile ? (
           <>
             <div className="profile-hero">
-              {profile.photoURL ? (
-                <img
-                  className="profile-avatar"
-                  src={profile.photoURL}
-                  alt=""
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <span className="profile-avatar is-fallback" aria-hidden>
-                  {initial}
-                </span>
-              )}
+              <span className="profile-avatar is-fallback" aria-hidden>
+                {initial}
+              </span>
               <div className="profile-hero-text">
-                <p className="profile-label">로그인 계정</p>
+                <p className="profile-label">내 닉네임</p>
                 {editing ? (
                   <div className="profile-edit">
                     <input
@@ -209,9 +211,6 @@ export function ProfileModal({
                 {(localError || error) && (
                   <p className="name-error">{localError || error}</p>
                 )}
-                {profile.email && (
-                  <p className="profile-email">{profile.email}</p>
-                )}
               </div>
             </div>
 
@@ -258,26 +257,113 @@ export function ProfileModal({
         ) : (
           <div className="profile-guest">
             <p className="profile-guest-lead">
-              Google로 로그인하면 닉네임을 정하고, 기록을 다른 기기에서도 이어갈
-              수 있어요.
+              닉네임과 비밀번호로 가입하면, 기록을 다른 기기에서도 이어갈 수
+              있어요. 카톡 안에서도 바로 됩니다.
             </p>
-            <ul className="nick-setup-guide">
-              <li>
-                <strong>첫 연동</strong>
-                <span>
-                  정한 닉네임이 계정 시작 데이터예요. 이 기기 연속 승리도
-                  이어붙여요.
-                </span>
-              </li>
-              <li>
-                <strong>중복 불가</strong>
-                <span>이미 있는 닉네임은 쓸 수 없어요.</span>
-              </li>
-              <li>
-                <strong>이름 변경</strong>
-                <span>바꿔도 통계와 랭킹 기록은 uid 기준으로 따라가요.</span>
-              </li>
-            </ul>
+
+            <div className="auth-mode-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={authMode === 'login'}
+                className={authMode === 'login' ? 'is-active' : undefined}
+                onClick={() => {
+                  setAuthMode('login')
+                  setLocalError(null)
+                }}
+              >
+                로그인
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={authMode === 'signup'}
+                className={authMode === 'signup' ? 'is-active' : undefined}
+                onClick={() => {
+                  setAuthMode('signup')
+                  setLocalError(null)
+                }}
+              >
+                회원가입
+              </button>
+            </div>
+
+            {authMode === 'signup' && (
+              <ul className="nick-setup-guide">
+                <li>
+                  <strong>닉네임</strong>
+                  <span>랭킹·기록에 쓰여요. 중복은 안 됩니다.</span>
+                </li>
+                <li>
+                  <strong>비밀번호</strong>
+                  <span>
+                    6자만 되면 아무거나 돼요. 다른 기기 로그인할 때 씁니다.
+                  </span>
+                </li>
+              </ul>
+            )}
+
+            <form
+              className="auth-form"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void submitAuth()
+              }}
+            >
+              <label className="nick-setup-label" htmlFor="auth-nickname">
+                닉네임
+              </label>
+              <input
+                id="auth-nickname"
+                type="text"
+                maxLength={20}
+                value={nickname}
+                autoComplete="username"
+                placeholder="닉네임"
+                disabled={busy || !authEnabled}
+                onChange={(e) => {
+                  setNickname(e.target.value)
+                  setLocalError(null)
+                }}
+              />
+              <label className="nick-setup-label" htmlFor="auth-password">
+                비밀번호
+              </label>
+              <input
+                id="auth-password"
+                type="password"
+                minLength={6}
+                value={password}
+                autoComplete={
+                  authMode === 'signup' ? 'new-password' : 'current-password'
+                }
+                placeholder="아무거나 6자+"
+                disabled={busy || !authEnabled}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  setLocalError(null)
+                }}
+              />
+              {(localError || error) && (
+                <p className="name-error">{localError || error}</p>
+              )}
+              {authEnabled ? (
+                <button type="submit" className="cta" disabled={busy}>
+                  {busy
+                    ? authMode === 'signup'
+                      ? '가입 중...'
+                      : '로그인 중...'
+                    : authMode === 'signup'
+                      ? '가입하고 시작'
+                      : '로그인'}
+                </button>
+              ) : (
+                <p className="profile-guest-note">
+                  로그인을 아직 설정하지 않았어요
+                </p>
+              )}
+            </form>
+
             <div className="profile-stats" aria-label="이 브라우저 통계">
               <div>
                 <strong>{winRate(stats)}%</strong>
@@ -297,66 +383,6 @@ export function ProfileModal({
               </div>
             </div>
             <p className="profile-guest-note">위 숫자는 이 브라우저 기준이에요</p>
-            {(hint || error) && (
-              <p className="profile-inapp-hint">{error || hint}</p>
-            )}
-            {authEnabled ? (
-              <div className="profile-login-actions">
-                {inApp ? (
-                  <>
-                    <button
-                      type="button"
-                      className="cta"
-                      onClick={() => {
-                        openInExternalBrowser()
-                        setLocalError(
-                          inKakao
-                            ? '브라우저로 열기를 시도했어요. 안 열리면 아래 링크를 복사해 Chrome/Safari에 붙여넣기 하세요'
-                            : '기본 브라우저로 열기를 시도했어요. 안 되면 링크를 복사해 주세요',
-                        )
-                      }}
-                      disabled={busy}
-                    >
-                      브라우저에서 열기
-                    </button>
-                    <button
-                      type="button"
-                      className="cta cta-secondary"
-                      onClick={async () => {
-                        const ok = await copyText(cleanCurrentUrl())
-                        setCopied(ok)
-                        setLocalError(
-                          ok
-                            ? '주소를 복사했어요. Chrome/Safari에 붙여넣고 연 뒤 Google 로그인 하세요'
-                            : '복사에 실패했어요. 주소창 링크를 직접 복사해 주세요',
-                        )
-                      }}
-                    >
-                      {copied ? '주소 복사됨' : '로그인 주소 복사'}
-                    </button>
-                    {inKakao && (
-                      <p className="profile-guest-note">
-                        iPhone: 우측 하단 ··· → Safari로 열기
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className="cta"
-                    onClick={onSignIn}
-                    disabled={busy}
-                  >
-                    {busy ? '연결 중...' : 'Google 로그인'}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <p className="profile-guest-note">로그인을 아직 설정하지 않았어요</p>
-            )}
-            {localError && !error && (
-              <p className="profile-inapp-hint">{localError}</p>
-            )}
           </div>
         )}
       </div>
