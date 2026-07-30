@@ -28,12 +28,67 @@
 .header {
   position: relative;
   display: grid;
-  grid-template-columns: 40px 1fr 40px;
+  grid-template-columns: auto 1fr 40px;
   align-items: center;
   gap: 8px;
   padding: 6px 0 10px;
   border-bottom: 1px solid #eee;
   margin-bottom: 12px;
+}
+
+.header-auth {
+  min-width: 40px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1.5px solid #e4ebf7;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f7f9fc, #eef3ff);
+  color: #3b6fd8;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.header-auth:hover {
+  border-color: #c9d7f5;
+  background: linear-gradient(135deg, #f4f7fd, #e8effc);
+}
+
+.header-auth.is-user {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.header-auth.is-user:hover {
+  background: transparent;
+  opacity: 0.9;
+}
+
+.header-auth-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  background: #dbe7ff;
+}
+
+.header-auth-avatar.is-fallback {
+  display: grid;
+  place-items: center;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #3b6fd8;
+  border: 1.5px solid #e4ebf7;
 }
 
 .auth-status {
@@ -904,6 +959,10 @@
   display: grid;
   place-items: center;
   padding: 20px;
+}
+
+.profile-backdrop {
+  z-index: 60;
 }
 
 .modal {

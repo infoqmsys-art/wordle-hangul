@@ -75,8 +75,9 @@ function App() {
 
   const openProfile = () => {
     auth.clearError()
-    setProfileOpen(true)
     setMenuOpen(false)
+    // 같은 탭/클릭이 배경에 떨어져 모달이 바로 닫히는 것 방지
+    window.setTimeout(() => setProfileOpen(true), 0)
   }
 
   const profileMenuItem = (
@@ -111,18 +112,42 @@ function App() {
     />
   )
 
+  const headerAuthButton = auth.user ? (
+    <button
+      type="button"
+      className="header-auth is-user"
+      aria-label={`${auth.user.nickname} · 내 정보`}
+      onClick={openProfile}
+    >
+      {auth.user.photoURL ? (
+        <img
+          className="header-auth-avatar"
+          src={auth.user.photoURL}
+          alt=""
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <span className="header-auth-avatar is-fallback" aria-hidden>
+          {auth.user.nickname.trim().slice(0, 1) || '?'}
+        </span>
+      )}
+    </button>
+  ) : (
+    <button
+      type="button"
+      className="header-auth"
+      aria-label="로그인"
+      onClick={openProfile}
+    >
+      로그인
+    </button>
+  )
+
   if (game.needMode) {
     return (
       <div className="app">
         <header className="header">
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="도움말"
-            onClick={() => setHowto(true)}
-          >
-            <HelpIcon />
-          </button>
+          {headerAuthButton}
           <div className="brand">
             <h1>푸들푸들 오늘의 단어</h1>
           </div>
@@ -214,14 +239,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="도움말"
-          onClick={() => setHowto(true)}
-        >
-          <HelpIcon />
-        </button>
+        {headerAuthButton}
         <div className="brand">
           <p className="brand-kicker is-challenge">
             {modeLabel}
@@ -500,21 +518,6 @@ function App() {
         onCancel={() => auth.cancelNicknameSetup()}
       />
     </div>
-  )
-}
-
-function HelpIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
-      <path
-        d="M9.8 9.4a2.4 2.4 0 1 1 3.5 2.1c-.7.4-1.1.9-1.1 1.7V14"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <circle cx="12" cy="17" r="1" fill="currentColor" />
-    </svg>
   )
 }
 

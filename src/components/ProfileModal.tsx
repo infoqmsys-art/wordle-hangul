@@ -35,13 +35,19 @@ export function ProfileModal({
   const [name, setName] = useState(profile?.nickname ?? '')
   const [localError, setLocalError] = useState<string | null>(null)
   const [stats, setStats] = useState<PersonalStats>(() => getPersonalStats())
+  const [closeArmed, setCloseArmed] = useState(false)
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setCloseArmed(false)
+      return
+    }
     setEditing(false)
     setName(profile?.nickname ?? '')
     setLocalError(null)
     setStats(profile ?? getPersonalStats())
+    const t = window.setTimeout(() => setCloseArmed(true), 120)
+    return () => window.clearTimeout(t)
   }, [open, profile])
 
   if (!open) return null
@@ -64,8 +70,13 @@ export function ProfileModal({
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <div
+    <div
+      className="modal-backdrop profile-backdrop"
+      role="presentation"
+      onClick={() => {
+        if (closeArmed) onClose()
+      }}
+    >      <div
         className="profile-panel"
         role="dialog"
         aria-modal="true"
