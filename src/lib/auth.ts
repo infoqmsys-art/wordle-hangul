@@ -351,6 +351,7 @@ export type GoogleSignInResult =
   | { status: 'ready'; profile: UserProfile }
   | { status: 'needs-nickname'; setup: NicknameSetup }
   | { status: 'redirecting' }
+  | { status: 'needs-external'; hint: string }
 
 function googleProvider(): GoogleAuthProvider {
   const provider = new GoogleAuthProvider()
@@ -370,10 +371,7 @@ async function finishGoogleUser(user: User): Promise<GoogleSignInResult> {
 export async function consumeGoogleRedirect(): Promise<GoogleSignInResult | null> {
   if (!isFirebaseConfigured()) return null
   try {
-    const result = await getRedirectResult(
-      getFirebaseAuth(),
-      browserPopupRedirectResolver,
-    )
+    const result = await getRedirectResult(getFirebaseAuth())
     if (!result?.user) return null
     return finishGoogleUser(result.user)
   } catch (err) {
@@ -387,23 +385,22 @@ export async function signInWithGoogle(): Promise<GoogleSignInResult> {
     throw new Error('Firebase 설정이 없습니다')
   }
 
-  // 카톡 등 인앱: Google이 OAuth 자체를 차단 → 외부 브라우저로 보냄
+  // 카톡 등 인앱: Google이 OAuth 자체를 차단 → 외부 브라우저 유도
   if (isInAppBrowser()) {
-    const opened = openInExternalBrowser()
-    const err = new Error(
-      opened
-        ? 'auth/open-external'
-        : inAppLoginHint() || '기본 브라우저에서 열어 주세요',
-    ) as Error & { code: string }
-    err.code = opened ? 'auth/open-external' : 'auth/popup-blocked'
-    throw err
+    openInExternalBrowser()
+    return {
+      status: 'needs-external',
+      hint:
+        inAppLoginHint() ||
+        '기본 브라우저(Chrome/Safari)로 열어 다시 로그인해 주세요',
+    }
   }
 
   const auth = getFirebaseAuth()
   const provider = googleProvider()
 
   if (preferAuthRedirect()) {
-    await signInWithRedirect(auth, provider, browserPopupRedirectResolver)
+    await signInWithRedirect(auth, provider)
     return { status: 'redirecting' }
   }
 
@@ -419,16 +416,9 @@ export async function signInWithGoogle(): Promise<GoogleSignInResult> {
       err && typeof err === 'object' && 'code' in err
         ? String((err as { code: string }).code)
         : ''
-    if (
-      code === 'auth/popup-blocked' ||
-      code === 'auth/popup-closed-by-user' ||
-      code === 'auth/cancelled-popup-request'
-    ) {
-      // 팝업 실패 시 리다이렉트로 재시도 (모바일·제한 브라우저)
-      if (code === 'auth/popup-blocked') {
-        await signInWithRedirect(auth, provider, browserPopupRedirectResolver)
-        return { status: 'redirecting' }
-      }
+    if (code === 'auth/popup-blocked') {
+      await signInWithRedirect(auth, provider)
+      return { status: 'redirecting' }
     }
     throw err
   }

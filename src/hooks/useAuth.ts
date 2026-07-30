@@ -80,7 +80,11 @@ export function useAuth() {
     try {
       const result = await signInWithGoogle()
       if (result.status === 'redirecting') {
-        // 페이지가 Google로 이동 중
+        setError('Google 로그인 화면으로 이동 중...')
+        return null
+      }
+      if (result.status === 'needs-external') {
+        setError(result.hint)
         return null
       }
       if (result.status === 'ready') {

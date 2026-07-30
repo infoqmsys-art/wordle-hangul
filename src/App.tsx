@@ -137,7 +137,19 @@ function App() {
       type="button"
       className="header-auth"
       aria-label="로그인"
-      onClick={openProfile}
+      onClick={() => {
+        openProfile()
+        // 카톡 인앱이 아니면 바로 Google 로그인까지 진행
+        if (!auth.inAppHint) {
+          void (async () => {
+            const profile = await auth.signIn()
+            if (profile) {
+              game.refreshStreak()
+              setProfileOpen(false)
+            }
+          })()
+        }
+      }}
     >
       로그인
     </button>

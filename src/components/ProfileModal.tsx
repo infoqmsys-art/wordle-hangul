@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { UserProfile } from '../lib/auth'
 import {
+  cleanCurrentUrl,
+  copyText,
   inAppLoginHint,
   isInAppBrowser,
   isKakaoTalkBrowser,
@@ -42,6 +44,7 @@ export function ProfileModal({
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(profile?.nickname ?? '')
   const [localError, setLocalError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const [stats, setStats] = useState<PersonalStats>(() => getPersonalStats())
   const ignoreCloseUntil = useRef(0)
   const backdropPress = useRef(false)
@@ -50,6 +53,7 @@ export function ProfileModal({
     (typeof navigator !== 'undefined' && isInAppBrowser()
       ? inAppLoginHint()
       : '')
+  const inApp = typeof navigator !== 'undefined' && isInAppBrowser()
   const inKakao = typeof navigator !== 'undefined' && isKakaoTalkBrowser()
 
   useEffect(() => {
@@ -60,9 +64,10 @@ export function ProfileModal({
     setEditing(false)
     setName(profile?.nickname ?? '')
     setLocalError(null)
+    setCopied(false)
     setStats(profile ?? getPersonalStats())
     // 로그인 버튼을 누른 같은 제스처가 배경 닫기로 이어지지 않게
-    ignoreCloseUntil.current = Date.now() + 500
+    ignoreCloseUntil.current = Date.now() + 800
   }, [open, profile])
 
   if (!open) return null
@@ -292,28 +297,65 @@ export function ProfileModal({
               </div>
             </div>
             <p className="profile-guest-note">위 숫자는 이 브라우저 기준이에요</p>
-            {hint && <p className="profile-inapp-hint">{hint}</p>}
+            {(hint || error) && (
+              <p className="profile-inapp-hint">{error || hint}</p>
+            )}
             {authEnabled ? (
-              <button
-                type="button"
-                className="cta"
-                onClick={() => {
-                  if (inKakao) {
-                    openInExternalBrowser()
-                    return
-                  }
-                  onSignIn()
-                }}
-                disabled={busy}
-              >
-                {busy
-                  ? '연결 중...'
-                  : inKakao
-                    ? '브라우저에서 로그인'
-                    : 'Google 로그인'}
-              </button>
+              <div className="profile-login-actions">
+                {inApp ? (
+                  <>
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={() => {
+                        openInExternalBrowser()
+                        setLocalError(
+                          inKakao
+                            ? '브라우저로 열기를 시도했어요. 안 열리면 아래 링크를 복사해 Chrome/Safari에 붙여넣기 하세요'
+                            : '기본 브라우저로 열기를 시도했어요. 안 되면 링크를 복사해 주세요',
+                        )
+                      }}
+                      disabled={busy}
+                    >
+                      브라우저에서 열기
+                    </button>
+                    <button
+                      type="button"
+                      className="cta cta-secondary"
+                      onClick={async () => {
+                        const ok = await copyText(cleanCurrentUrl())
+                        setCopied(ok)
+                        setLocalError(
+                          ok
+                            ? '주소를 복사했어요. Chrome/Safari에 붙여넣고 연 뒤 Google 로그인 하세요'
+                            : '복사에 실패했어요. 주소창 링크를 직접 복사해 주세요',
+                        )
+                      }}
+                    >
+                      {copied ? '주소 복사됨' : '로그인 주소 복사'}
+                    </button>
+                    {inKakao && (
+                      <p className="profile-guest-note">
+                        iPhone: 우측 하단 ··· → Safari로 열기
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="cta"
+                    onClick={onSignIn}
+                    disabled={busy}
+                  >
+                    {busy ? '연결 중...' : 'Google 로그인'}
+                  </button>
+                )}
+              </div>
             ) : (
               <p className="profile-guest-note">로그인을 아직 설정하지 않았어요</p>
+            )}
+            {localError && !error && (
+              <p className="profile-inapp-hint">{localError}</p>
             )}
           </div>
         )}
