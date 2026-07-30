@@ -69,7 +69,12 @@ export function authErrorMessage(err: unknown): string | null {
     return 'Firebase에서 Google 로그인을 아직 켜지 않았어요'
   }
   if (code === 'auth/unauthorized-domain') {
-    return '이 주소가 Firebase 허용 도메인에 없어요 (localhost 추가 필요)'
+    const host =
+      typeof window !== 'undefined' ? window.location.hostname : ''
+    if (host && host !== 'localhost' && host !== '127.0.0.1') {
+      return `이 주소(${host})가 Firebase 허용 도메인에 없어요. Authentication → 설정 → 승인된 도메인에 추가해 주세요`
+    }
+    return '이 주소가 Firebase 허용 도메인에 없어요. Authentication → 설정 → 승인된 도메인에 localhost / 127.0.0.1 / 배포 도메인을 확인해 주세요'
   }
   if (code === 'auth/popup-blocked') {
     return '팝업이 막혔어요. 기본 브라우저(Chrome/Safari)에서 다시 시도해 주세요'

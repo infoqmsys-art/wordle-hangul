@@ -656,7 +656,7 @@
   margin: 0;
 }
 
-.finish-actions .cta:last-child {
+.finish-actions .finish-continue {
   grid-column: 1 / -1;
 }
 

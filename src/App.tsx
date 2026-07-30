@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AuthStatusBar } from './components/AuthStatusBar'
 import { Board } from './components/Board'
 import { Confetti } from './components/Confetti'
@@ -9,11 +9,10 @@ import { ModeSelect } from './components/ModeSelect'
 import { NicknameSetupModal } from './components/NicknameSetupModal'
 import { ProfileModal } from './components/ProfileModal'
 import { RankingModal } from './components/RankingModal'
-import { ResultModal } from './components/ResultModal'
 import { DIFFICULTY_META } from './data/words'
 import { useAuth } from './hooks/useAuth'
 import { useGame, MAX_ATTEMPTS } from './hooks/useGame'
-import { formatSeconds } from './lib/history'
+import { formatSeconds, getLastName, saveHistoryRecord } from './lib/history'
 import { shareChallenge } from './lib/challenge'
 import './App.css'
 
@@ -39,6 +38,58 @@ function App() {
     if (!auth.ready || !auth.user) return
     refreshStreak()
   }, [auth.ready, auth.user, refreshStreak])
+
+  const autoSaveKey = useRef<string | null>(null)
+  useEffect(() => {
+    if (game.status === 'playing' || game.recordSaved || !game.difficulty) {
+      if (game.status === 'playing') autoSaveKey.current = null
+      return
+    }
+    const nick = (auth.user?.nickname?.trim() || getLastName().trim()).slice(
+      0,
+      20,
+    )
+    if (!nick) return
+    const key = `${game.answerWord}:${game.dateKey}:${game.difficulty}`
+    if (autoSaveKey.current === key) return
+    autoSaveKey.current = key
+
+    let cancelled = false
+    saveHistoryRecord({
+      name: nick,
+      word: game.answerWord,
+      seconds: game.seconds,
+      attempts: game.rows.length,
+      maxAttempts: MAX_ATTEMPTS,
+      won: game.status === 'won',
+      dateKey: game.dateKey,
+      difficulty: game.difficulty,
+      wordLength: game.wordLength,
+      uid: auth.user?.uid,
+    })
+      .then(() => {
+        if (!cancelled) game.markRecordSaved()
+      })
+      .catch(() => {
+        if (!cancelled) autoSaveKey.current = null
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    game.status,
+    game.recordSaved,
+    game.difficulty,
+    game.answerWord,
+    game.dateKey,
+    game.seconds,
+    game.rows.length,
+    game.wordLength,
+    game.markRecordSaved,
+    auth.user?.nickname,
+    auth.user?.uid,
+  ])
 
   const finished = game.status !== 'playing'
   const modeLabel =
@@ -310,7 +361,7 @@ function App() {
                 setMenuOpen(false)
               }}
             >
-              모드 선택
+              홈
             </button>
             {finished && (
               <button
@@ -428,9 +479,9 @@ function App() {
               <button
                 type="button"
                 className="cta cta-secondary"
-                onClick={() => game.setShowResult(true)}
+                onClick={() => game.changeMode()}
               >
-                결과보기
+                홈
               </button>
               <button
                 type="button"
@@ -449,7 +500,7 @@ function App() {
               </button>
               <button
                 type="button"
-                className="cta"
+                className="cta finish-continue"
                 onClick={() => game.nextRound()}
               >
                 {game.playMode === 'daily' ? '연습 이어하기' : '다음 문제 풀기'}
@@ -494,28 +545,6 @@ function App() {
         initialDifficulty={game.difficulty ?? 'easy'}
       />
       {profileModal}
-      {game.difficulty && game.playMode && (
-        <ResultModal
-          open={game.showResult}
-          status={game.status}
-          answerWord={game.answerWord}
-          answerJamo={game.answerJamo}
-          definition={game.definition}
-          rows={game.rows}
-          seconds={game.seconds}
-          dateKey={game.dateKey}
-          difficulty={game.difficulty}
-          wordLength={game.wordLength}
-          playMode={game.playMode}
-          recordSaved={game.recordSaved}
-          onRecordSaved={game.markRecordSaved}
-          onNextRound={game.nextRound}
-          onOpenHistory={() => setHistoryOpen(true)}
-          onClose={() => game.setShowResult(false)}
-          autoNickname={auth.user?.nickname}
-          userUid={auth.user?.uid}
-        />
-      )}
       <NicknameSetupModal
         open={Boolean(auth.nicknameSetup)}
         suggested={auth.nicknameSetup?.suggested ?? ''}

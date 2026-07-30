@@ -139,7 +139,6 @@ export function useGame() {
   const [shake, setShake] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [revealingRow, setRevealingRow] = useState<number | null>(null)
-  const [showResult, setShowResult] = useState(false)
   const [definition, setDefinition] = useState<string | null>(null)
   const [keyStatuses, setKeyStatuses] = useState<Record<string, KeyStatus>>({})
   const [startedAt, setStartedAt] = useState<number | null>(null)
@@ -185,7 +184,6 @@ export function useGame() {
         setCurrentStreak(getPersonalStats().currentStreak)
         setCurrent([])
         setDefinition(null)
-        setShowResult(saved.status !== 'playing')
         return
       }
 
@@ -201,7 +199,6 @@ export function useGame() {
       setCelebrate(false)
       setCurrentStreak(getPersonalStats().currentStreak)
       setDefinition(null)
-      setShowResult(false)
       setRevealingRow(null)
     },
     [],
@@ -341,7 +338,6 @@ export function useGame() {
     setRows([])
     setCurrent([])
     setStatus('playing')
-    setShowResult(false)
     setKeyStatuses({})
     setCelebrate(false)
     setStatsRecorded(false)
@@ -349,6 +345,10 @@ export function useGame() {
 
   const refreshStreak = useCallback(() => {
     setCurrentStreak(getPersonalStats().currentStreak)
+  }, [])
+
+  const markRecordSaved = useCallback(() => {
+    setRecordSaved(true)
   }, [])
 
   const locked =
@@ -394,8 +394,6 @@ export function useGame() {
         setCurrentStreak(0)
         playLoseSound()
       }
-
-      window.setTimeout(() => setShowResult(true), next === 'won' ? 900 : 400)
     },
     [showToast, startedAt],
   )
@@ -539,8 +537,6 @@ export function useGame() {
     shake,
     toast,
     revealingRow,
-    showResult,
-    setShowResult,
     answerWord,
     answerJamo: answerEntry?.jamo ?? [],
     definition,
@@ -549,7 +545,7 @@ export function useGame() {
     seconds,
     dateKey,
     recordSaved,
-    markRecordSaved: () => setRecordSaved(true),
+    markRecordSaved,
     nextRound,
     startGame,
     changeMode,
