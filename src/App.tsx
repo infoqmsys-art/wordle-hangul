@@ -76,8 +76,7 @@ function App() {
   const openProfile = () => {
     auth.clearError()
     setMenuOpen(false)
-    // 같은 탭/클릭이 배경에 떨어져 모달이 바로 닫히는 것 방지
-    window.setTimeout(() => setProfileOpen(true), 0)
+    setProfileOpen(true)
   }
 
   const profileMenuItem = (

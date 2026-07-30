@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { UserProfile } from '../lib/auth'
 import {
   avgWinAttempts,
@@ -35,25 +35,31 @@ export function ProfileModal({
   const [name, setName] = useState(profile?.nickname ?? '')
   const [localError, setLocalError] = useState<string | null>(null)
   const [stats, setStats] = useState<PersonalStats>(() => getPersonalStats())
-  const [closeArmed, setCloseArmed] = useState(false)
+  const ignoreCloseUntil = useRef(0)
+  const backdropPress = useRef(false)
 
   useEffect(() => {
     if (!open) {
-      setCloseArmed(false)
+      backdropPress.current = false
       return
     }
     setEditing(false)
     setName(profile?.nickname ?? '')
     setLocalError(null)
     setStats(profile ?? getPersonalStats())
-    const t = window.setTimeout(() => setCloseArmed(true), 120)
-    return () => window.clearTimeout(t)
+    // 로그인 버튼을 누른 같은 제스처가 배경 닫기로 이어지지 않게
+    ignoreCloseUntil.current = Date.now() + 500
   }, [open, profile])
 
   if (!open) return null
 
   const avgAttempts = avgWinAttempts(stats)
   const initial = (profile?.nickname ?? '?').trim().slice(0, 1) || '?'
+
+  const tryCloseFromBackdrop = () => {
+    if (Date.now() < ignoreCloseUntil.current) return
+    onClose()
+  }
 
   const saveName = async () => {
     const trimmed = name.trim()
@@ -73,8 +79,19 @@ export function ProfileModal({
     <div
       className="modal-backdrop profile-backdrop"
       role="presentation"
-      onClick={() => {
-        if (closeArmed) onClose()
+      onPointerDown={(e) => {
+        backdropPress.current = e.target === e.currentTarget
+      }}
+      onPointerUp={(e) => {
+        const startedOnBackdrop = backdropPress.current
+        backdropPress.current = false
+        if (startedOnBackdrop && e.target === e.currentTarget) {
+          tryCloseFromBackdrop()
+        }
+      }}
+      onClick={(e) => {
+        // click만으로 닫지 않음 (열기 직후 잔여 click 방지)
+        e.stopPropagation()
       }}
     >      <div
         className="profile-panel"
