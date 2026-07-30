@@ -5,6 +5,10 @@ export type PersonalStats = {
   winAttempts: number
   /** 승리 판의 초 합 */
   winSeconds: number
+  /** 현재 연속 승리 */
+  currentStreak: number
+  /** 최고 연속 승리 */
+  maxStreak: number
 }
 
 const STATS_KEY = 'wordle-hangul-personal-stats-v1'
@@ -14,6 +18,8 @@ const empty: PersonalStats = {
   wins: 0,
   winAttempts: 0,
   winSeconds: 0,
+  currentStreak: 0,
+  maxStreak: 0,
 }
 
 export function getPersonalStats(): PersonalStats {
@@ -26,10 +32,16 @@ export function getPersonalStats(): PersonalStats {
       wins: Number(data.wins ?? 0),
       winAttempts: Number(data.winAttempts ?? 0),
       winSeconds: Number(data.winSeconds ?? 0),
+      currentStreak: Number(data.currentStreak ?? 0),
+      maxStreak: Number(data.maxStreak ?? 0),
     }
   } catch {
     return { ...empty }
   }
+}
+
+export function setPersonalStats(stats: PersonalStats): void {
+  localStorage.setItem(STATS_KEY, JSON.stringify(stats))
 }
 
 export function recordPersonalResult(input: {
@@ -38,13 +50,22 @@ export function recordPersonalResult(input: {
   seconds: number
 }): PersonalStats {
   const prev = getPersonalStats()
+  const currentStreak = input.won ? prev.currentStreak + 1 : 0
   const next: PersonalStats = {
     played: prev.played + 1,
     wins: prev.wins + (input.won ? 1 : 0),
     winAttempts: prev.winAttempts + (input.won ? input.attempts : 0),
     winSeconds: prev.winSeconds + (input.won ? Math.max(0, input.seconds) : 0),
+    currentStreak,
+    maxStreak: Math.max(prev.maxStreak, currentStreak),
   }
-  localStorage.setItem(STATS_KEY, JSON.stringify(next))
+  setPersonalStats(next)
+
+  // 로그인 상태면 클라우드에도 반영 (실패해도 로컬은 유지)
+  void import('./auth')
+    .then(({ pushStatsIfLoggedIn }) => pushStatsIfLoggedIn(next))
+    .catch(() => undefined)
+
   return next
 }
 

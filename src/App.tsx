@@ -1,22 +1,29 @@
 import { useEffect, useState } from 'react'
+import { AuthStatusBar } from './components/AuthStatusBar'
 import { Board } from './components/Board'
 import { Confetti } from './components/Confetti'
-import { DifficultySelect } from './components/DifficultySelect'
 import { HistoryModal } from './components/HistoryModal'
 import { HowTo } from './components/HowTo'
 import { Keyboard } from './components/Keyboard'
+import { ModeSelect } from './components/ModeSelect'
+import { NicknameSetupModal } from './components/NicknameSetupModal'
+import { ProfileModal } from './components/ProfileModal'
 import { RankingModal } from './components/RankingModal'
 import { ResultModal } from './components/ResultModal'
 import { DIFFICULTY_META } from './data/words'
+import { useAuth } from './hooks/useAuth'
 import { useGame, MAX_ATTEMPTS } from './hooks/useGame'
 import { formatSeconds } from './lib/history'
+import { shareChallenge } from './lib/challenge'
 import './App.css'
 
 function App() {
   const game = useGame()
+  const auth = useAuth()
   const [howto, setHowto] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [rankingOpen, setRankingOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -27,7 +34,21 @@ function App() {
     }
   }, [])
 
+  const refreshStreak = game.refreshStreak
+  useEffect(() => {
+    if (!auth.ready || !auth.user) return
+    refreshStreak()
+  }, [auth.ready, auth.user, refreshStreak])
+
   const finished = game.status !== 'playing'
+  const modeLabel =
+    game.challengeMode
+      ? '친구 도전'
+      : game.playMode === 'daily'
+        ? '오늘의 단어'
+        : game.playMode === 'practice'
+          ? '연습'
+          : null
 
   if (game.dictError) {
     return (
@@ -52,11 +73,140 @@ function App() {
     )
   }
 
-  if (game.needDifficulty) {
+  const openProfile = () => {
+    auth.clearError()
+    setProfileOpen(true)
+    setMenuOpen(false)
+  }
+
+  const profileMenuItem = (
+    <button type="button" onClick={openProfile}>
+      내 정보
+    </button>
+  )
+
+  const profileModal = (
+    <ProfileModal
+      open={profileOpen}
+      profile={auth.user}
+      authEnabled={auth.enabled}
+      busy={auth.busy}
+      error={auth.error}
+      onClose={() => {
+        setProfileOpen(false)
+        auth.clearError()
+      }}
+      onSignIn={async () => {
+        const profile = await auth.signIn()
+        if (profile) {
+          game.refreshStreak()
+          setProfileOpen(false)
+        }
+      }}
+      onSignOut={async () => {
+        await auth.signOut()
+        setProfileOpen(false)
+      }}
+      onUpdateNickname={auth.rename}
+    />
+  )
+
+  if (game.needMode) {
     return (
       <div className="app">
-        <DifficultySelect open onSelect={game.startDifficulty} />
+        <header className="header">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="도움말"
+            onClick={() => setHowto(true)}
+          >
+            <HelpIcon />
+          </button>
+          <div className="brand">
+            <h1>푸들푸들 오늘의 단어</h1>
+          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="메뉴"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <MenuIcon />
+          </button>
+          {menuOpen && (
+            <div className="menu-pop">
+              <button
+                type="button"
+                onClick={() => {
+                  setHowto(true)
+                  setMenuOpen(false)
+                }}
+              >
+                게임 방법
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRankingOpen(true)
+                  setMenuOpen(false)
+                }}
+              >
+                랭킹
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryOpen(true)
+                  setMenuOpen(false)
+                }}
+              >
+                기록 보기
+              </button>
+              {profileMenuItem}
+            </div>
+          )}
+        </header>
+        {auth.user && (
+          <AuthStatusBar
+            nickname={auth.user.nickname}
+            photoURL={auth.user.photoURL}
+            streak={game.currentStreak}
+            onClick={openProfile}
+          />
+        )}
+        <ModeSelect open onSelect={game.startGame} />
         {game.toast && <div className="toast">{game.toast}</div>}
+        {auth.error && !profileOpen && !auth.nicknameSetup && (
+          <div className="toast">{auth.error}</div>
+        )}
+        <HowTo
+          open={howto}
+          onClose={() => setHowto(false)}
+          guessCount={game.guessCount}
+          answerCount={game.answerCount}
+        />
+        <HistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} />
+        <RankingModal
+          open={rankingOpen}
+          onClose={() => setRankingOpen(false)}
+          initialDifficulty="easy"
+        />
+        {profileModal}
+        <NicknameSetupModal
+          open={Boolean(auth.nicknameSetup)}
+          suggested={auth.nicknameSetup?.suggested ?? ''}
+          previousName={auth.nicknameSetup?.previousName ?? ''}
+          hasLocalStats={Boolean(auth.nicknameSetup?.hasLocalStats)}
+          busy={auth.busy}
+          error={auth.error}
+          onSubmit={async (name) => {
+            const profile = await auth.submitNickname(name)
+            if (profile) game.refreshStreak()
+          }}
+          onCancel={() => auth.cancelNicknameSetup()}
+        />
       </div>
     )
   }
@@ -73,12 +223,17 @@ function App() {
           <HelpIcon />
         </button>
         <div className="brand">
-          <p className="brand-kicker">
+          <p className="brand-kicker is-challenge">
+            {modeLabel}
             {game.difficulty
-              ? DIFFICULTY_META[game.difficulty].label
-              : '연습'}
+              ? ` · ${DIFFICULTY_META[game.difficulty].label}`
+              : ''}
           </p>
-          <h1>푸들푸들 오늘의 단어 연습</h1>
+          <h1>
+            {game.playMode === 'daily'
+              ? '푸들푸들 오늘의 단어'
+              : '푸들푸들 단어 연습'}
+          </h1>
         </div>
         <button
           type="button"
@@ -121,11 +276,11 @@ function App() {
             <button
               type="button"
               onClick={() => {
-                game.changeDifficulty()
+                game.changeMode()
                 setMenuOpen(false)
               }}
             >
-              난이도 선택
+              모드 선택
             </button>
             {finished && (
               <button
@@ -135,12 +290,22 @@ function App() {
                   setMenuOpen(false)
                 }}
               >
-                다음 문제 풀기
+                {game.playMode === 'daily' ? '연습 이어하기' : '다음 문제 풀기'}
               </button>
             )}
+            {profileMenuItem}
           </div>
         )}
       </header>
+
+      {auth.user && (
+        <AuthStatusBar
+          nickname={auth.user.nickname}
+          photoURL={auth.user.photoURL}
+          streak={game.currentStreak}
+          onClick={openProfile}
+        />
+      )}
 
       <main className="main">
         <Board
@@ -164,6 +329,29 @@ function App() {
             {game.startedAt ? formatSeconds(game.seconds) : '0초'}
           </span>
           <span className="hint-pill soft">자모 {game.wordLength}칸</span>
+          {game.challengeMode && (
+            <span className="hint-pill challenge-pill">친구 도전</span>
+          )}
+          {game.playMode === 'daily' && !game.challengeMode && (
+            <span className="hint-pill challenge-pill">오늘</span>
+          )}
+          {game.currentStreak >= 2 && (
+            <span
+              className={`hint-pill streak-pill${
+                game.currentStreak >= 5 ? ' is-hot' : ''
+              }`}
+              title={
+                auth.isLoggedIn
+                  ? '계정 기준 연속 승리'
+                  : '이 브라우저 기준 연속 승리'
+              }
+            >
+              <span className="streak-fire tiny" aria-hidden>
+                🔥
+              </span>
+              {game.currentStreak}연승
+            </span>
+          )}
         </div>
 
         {finished ? (
@@ -178,8 +366,9 @@ function App() {
               <p className="finish-meta">
                 {game.status === 'won' ? '성공' : '실패'}
                 {' · '}
+                {modeLabel}
                 {game.difficulty
-                  ? DIFFICULTY_META[game.difficulty].label
+                  ? ` · ${DIFFICULTY_META[game.difficulty].label}`
                   : ''}
                 {' · '}
                 {game.status === 'won'
@@ -188,6 +377,18 @@ function App() {
                 {' · '}
                 {formatSeconds(game.seconds)}
               </p>
+              {game.status === 'won' && game.currentStreak >= 2 && (
+                <p
+                  className={`finish-streak${
+                    game.currentStreak >= 5 ? ' is-hot' : ''
+                  }`}
+                >
+                  <span className="streak-fire" aria-hidden>
+                    🔥
+                  </span>
+                  {game.currentStreak}연속 승리 중!
+                </p>
+              )}
               {game.definition && (
                 <p className="finish-def">{game.definition}</p>
               )}
@@ -203,10 +404,25 @@ function App() {
               </button>
               <button
                 type="button"
+                className="cta cta-secondary"
+                onClick={async () => {
+                  if (!game.difficulty) return
+                  const result = await shareChallenge({
+                    difficulty: game.difficulty,
+                    word: game.answerWord,
+                    fromName: auth.user?.nickname,
+                  })
+                  if (result === 'copied') alert('도전 링크가 복사되었어요!')
+                }}
+              >
+                도전 보내기
+              </button>
+              <button
+                type="button"
                 className="cta"
                 onClick={() => game.nextRound()}
               >
-                다음 문제 풀기
+                {game.playMode === 'daily' ? '연습 이어하기' : '다음 문제 풀기'}
               </button>
             </div>
           </>
@@ -230,7 +446,10 @@ function App() {
       </main>
 
       {game.toast && <div className="toast">{game.toast}</div>}
-      <Confetti active={game.celebrate} />
+      {auth.error && !profileOpen && !auth.nicknameSetup && (
+        <div className="toast">{auth.error}</div>
+      )}
+      <Confetti active={game.celebrate} streak={game.currentStreak} />
 
       <HowTo
         open={howto}
@@ -244,7 +463,8 @@ function App() {
         onClose={() => setRankingOpen(false)}
         initialDifficulty={game.difficulty ?? 'easy'}
       />
-      {game.difficulty && (
+      {profileModal}
+      {game.difficulty && game.playMode && (
         <ResultModal
           open={game.showResult}
           status={game.status}
@@ -256,13 +476,29 @@ function App() {
           dateKey={game.dateKey}
           difficulty={game.difficulty}
           wordLength={game.wordLength}
+          playMode={game.playMode}
           recordSaved={game.recordSaved}
           onRecordSaved={game.markRecordSaved}
           onNextRound={game.nextRound}
           onOpenHistory={() => setHistoryOpen(true)}
           onClose={() => game.setShowResult(false)}
+          autoNickname={auth.user?.nickname}
+          userUid={auth.user?.uid}
         />
       )}
+      <NicknameSetupModal
+        open={Boolean(auth.nicknameSetup)}
+        suggested={auth.nicknameSetup?.suggested ?? ''}
+        previousName={auth.nicknameSetup?.previousName ?? ''}
+        hasLocalStats={Boolean(auth.nicknameSetup?.hasLocalStats)}
+        busy={auth.busy}
+        error={auth.error}
+        onSubmit={async (name) => {
+          const profile = await auth.submitNickname(name)
+          if (profile) game.refreshStreak()
+        }}
+        onCancel={() => auth.cancelNicknameSetup()}
+      />
     </div>
   )
 }

@@ -1,3 +1,5 @@
+import { dailyIndex } from '../lib/game'
+
 export type Difficulty = 'easy' | 'hard'
 
 export type WordEntry = {
@@ -85,4 +87,13 @@ export function pickRandomAnswer(
   const pool = answers.filter((a) => !avoid.has(a.word))
   const source = pool.length > 0 ? pool : answers
   return source[Math.floor(Math.random() * source.length)]
+}
+
+export function pickDailyAnswer(
+  dict: Dictionary,
+  difficulty: Difficulty,
+  date = new Date(),
+): WordEntry {
+  const answers = answersForDifficulty(dict, difficulty)
+  return answers[dailyIndex(answers.length, date)]
 }

@@ -4,6 +4,7 @@ import {
   findWordByJamo,
   isValidGuess,
   loadDictionary,
+  pickDailyAnswer,
   pickRandomAnswer,
   type Difficulty,
   type Dictionary,
@@ -16,12 +17,19 @@ import {
   type KeyStatus,
   type TileStatus,
 } from '../lib/game'
+import {
+  clearChallengeFromUrl,
+  findChallengeEntry,
+  readChallengeFromUrl,
+} from '../lib/challenge'
 import { normalizeInput } from '../lib/hangul'
 import { playLoseSound, playWinSound } from '../lib/sfx'
-import { recordPersonalResult } from '../lib/stats'
+import { getPersonalStats, recordPersonalResult } from '../lib/stats'
 import { lookupStdict } from '../lib/stdict'
 
 export const MAX_ATTEMPTS = 5
+
+export type PlayMode = 'daily' | 'practice'
 
 export type Row = {
   jamo: string[]
@@ -29,6 +37,8 @@ export type Row = {
 }
 
 type Persisted = {
+  playMode: PlayMode
+  dateKey: string
   difficulty: Difficulty
   answerWord: string
   answerJamo: string[]
@@ -40,9 +50,10 @@ type Persisted = {
   statsRecorded?: boolean
 }
 
-const SESSION_KEY = 'wordle-hangul-session-v5'
+const SESSION_KEY = 'wordle-hangul-session-v6'
 const RECENT_KEY = 'wordle-hangul-recent-v5'
 const DIFF_KEY = 'wordle-hangul-difficulty'
+const MODE_KEY = 'wordle-hangul-play-mode'
 const RECENT_LIMIT = 40
 
 function loadSession(): Persisted | null {
@@ -99,10 +110,27 @@ function buildKeyStatuses(rows: Row[]): Record<string, KeyStatus> {
   return map
 }
 
+function isValidSavedSession(
+  saved: Persisted,
+  today: string,
+): boolean {
+  if (!saved.difficulty || !saved.answerWord || !saved.answerJamo?.length) {
+    return false
+  }
+  if (
+    saved.answerJamo.length !== DIFFICULTY_META[saved.difficulty].wordLength
+  ) {
+    return false
+  }
+  if (saved.playMode === 'daily' && saved.dateKey !== today) return false
+  return true
+}
+
 export function useGame() {
   const dateKey = formatDateKey()
   const [dict, setDict] = useState<Dictionary | null>(null)
   const [dictError, setDictError] = useState<string | null>(null)
+  const [playMode, setPlayMode] = useState<PlayMode | null>(null)
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null)
   const [answerEntry, setAnswerEntry] = useState<WordEntry | null>(null)
   const [rows, setRows] = useState<Row[]>([])
@@ -119,6 +147,10 @@ export function useGame() {
   const [recordSaved, setRecordSaved] = useState(false)
   const [statsRecorded, setStatsRecorded] = useState(false)
   const [celebrate, setCelebrate] = useState(false)
+  const [currentStreak, setCurrentStreak] = useState(
+    () => getPersonalStats().currentStreak,
+  )
+  const [challengeMode, setChallengeMode] = useState(false)
   const [tick, setTick] = useState(0)
 
   const wordLength = difficulty
@@ -126,9 +158,16 @@ export function useGame() {
     : 5
 
   const applyRound = useCallback(
-    (diff: Difficulty, answer: WordEntry, saved?: Persisted | null) => {
+    (
+      mode: PlayMode,
+      diff: Difficulty,
+      answer: WordEntry,
+      saved?: Persisted | null,
+    ) => {
+      setPlayMode(mode)
       setDifficulty(diff)
       localStorage.setItem(DIFF_KEY, diff)
+      localStorage.setItem(MODE_KEY, mode)
 
       if (saved && saved.answerWord === answer.word) {
         const restored = restoreRows(saved.guesses, answer.jamo)
@@ -139,8 +178,11 @@ export function useGame() {
         setStartedAt(saved.startedAt)
         setFinishedAt(saved.finishedAt)
         setRecordSaved(saved.recordSaved)
-        setStatsRecorded(Boolean(saved.statsRecorded) || saved.status !== 'playing')
+        setStatsRecorded(
+          Boolean(saved.statsRecorded) || saved.status !== 'playing',
+        )
         setCelebrate(false)
+        setCurrentStreak(getPersonalStats().currentStreak)
         setCurrent([])
         setDefinition(null)
         setShowResult(saved.status !== 'playing')
@@ -157,12 +199,18 @@ export function useGame() {
       setRecordSaved(false)
       setStatsRecorded(false)
       setCelebrate(false)
+      setCurrentStreak(getPersonalStats().currentStreak)
       setDefinition(null)
       setShowResult(false)
       setRevealingRow(null)
     },
     [],
   )
+
+  const showToast = useCallback((message: string) => {
+    setToast(message)
+    window.setTimeout(() => setToast(null), 1800)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -171,17 +219,31 @@ export function useGame() {
         if (!alive) return
         setDict(loaded)
 
+        const challenge = readChallengeFromUrl()
+        if (challenge) {
+          const entry = findChallengeEntry(loaded, challenge)
+          clearChallengeFromUrl()
+          if (entry) {
+            clearSession()
+            setChallengeMode(true)
+            applyRound('practice', challenge.difficulty, entry)
+            showToast('친구가 보낸 도전!')
+            return
+          }
+          showToast('도전 링크를 열 수 없어요')
+        }
+
         const saved = loadSession()
-        if (
-          saved?.difficulty &&
-          saved.answerWord &&
-          saved.answerJamo?.length === DIFFICULTY_META[saved.difficulty].wordLength
-        ) {
+        if (saved && isValidSavedSession(saved, formatDateKey())) {
+          const mode = saved.playMode === 'daily' ? 'daily' : 'practice'
           applyRound(
+            mode,
             saved.difficulty,
             { word: saved.answerWord, jamo: saved.answerJamo },
             saved,
           )
+        } else if (saved) {
+          clearSession()
         }
       })
       .catch((err: unknown) => {
@@ -191,11 +253,13 @@ export function useGame() {
     return () => {
       alive = false
     }
-  }, [applyRound])
+  }, [applyRound, showToast])
 
   useEffect(() => {
-    if (!answerEntry || !difficulty) return
+    if (!answerEntry || !difficulty || !playMode) return
     saveSession({
+      playMode,
+      dateKey,
       difficulty,
       answerWord: answerEntry.word,
       answerJamo: answerEntry.jamo,
@@ -215,6 +279,8 @@ export function useGame() {
     recordSaved,
     statsRecorded,
     difficulty,
+    playMode,
+    dateKey,
   ])
 
   useEffect(() => {
@@ -230,25 +296,28 @@ export function useGame() {
     })
   }, [answerEntry, status])
 
-  const showToast = useCallback((message: string) => {
-    setToast(message)
-    window.setTimeout(() => setToast(null), 1600)
-  }, [])
-
   const triggerShake = useCallback(() => {
     setShake(true)
     window.setTimeout(() => setShake(false), 500)
   }, [])
 
-  const startDifficulty = useCallback(
-    (diff: Difficulty) => {
+  const startGame = useCallback(
+    (mode: PlayMode, diff: Difficulty) => {
       if (!dict) return
       clearSession()
-      const answer = pickRandomAnswer(dict, diff, loadRecentWords())
-      applyRound(diff, answer)
-      showToast(
-        diff === 'hard' ? '어려움 · 자모 7칸!' : '쉬움 · 자모 5칸!',
-      )
+      setChallengeMode(false)
+      const answer =
+        mode === 'daily'
+          ? pickDailyAnswer(dict, diff)
+          : pickRandomAnswer(dict, diff, loadRecentWords())
+      applyRound(mode, diff, answer)
+      if (mode === 'daily') {
+        showToast(
+          diff === 'hard' ? '오늘의 단어 · 어려움' : '오늘의 단어 · 쉬움',
+        )
+      } else {
+        showToast(diff === 'hard' ? '연습 · 어려움' : '연습 · 쉬움')
+      }
     },
     [dict, applyRound, showToast],
   )
@@ -256,13 +325,17 @@ export function useGame() {
   const nextRound = useCallback(() => {
     if (!dict || !difficulty) return
     clearSession()
+    setChallengeMode(false)
+    // 오늘의 단어가 끝나면 같은 난이도 연습으로 이어감
     const answer = pickRandomAnswer(dict, difficulty, loadRecentWords())
-    applyRound(difficulty, answer)
-    showToast('다음 문제!')
-  }, [dict, difficulty, applyRound, showToast])
+    applyRound('practice', difficulty, answer)
+    showToast(playMode === 'daily' ? '연습으로 이어갈게요!' : '다음 문제!')
+  }, [dict, difficulty, playMode, applyRound, showToast])
 
-  const changeDifficulty = useCallback(() => {
+  const changeMode = useCallback(() => {
     clearSession()
+    setChallengeMode(false)
+    setPlayMode(null)
     setDifficulty(null)
     setAnswerEntry(null)
     setRows([])
@@ -274,10 +347,15 @@ export function useGame() {
     setStatsRecorded(false)
   }, [])
 
+  const refreshStreak = useCallback(() => {
+    setCurrentStreak(getPersonalStats().currentStreak)
+  }, [])
+
   const locked =
     !dict ||
     !answerEntry ||
     !difficulty ||
+    !playMode ||
     status !== 'playing' ||
     revealingRow !== null
 
@@ -298,11 +376,12 @@ export function useGame() {
 
       setStatsRecorded((already) => {
         if (!already) {
-          recordPersonalResult({
+          const stats = recordPersonalResult({
             won: next === 'won',
             attempts,
             seconds: elapsed,
           })
+          setCurrentStreak(stats.currentStreak)
         }
         return true
       })
@@ -310,8 +389,9 @@ export function useGame() {
       if (next === 'won') {
         setCelebrate(true)
         playWinSound()
-        window.setTimeout(() => setCelebrate(false), 2200)
+        window.setTimeout(() => setCelebrate(false), 2600)
       } else {
+        setCurrentStreak(0)
         playLoseSound()
       }
 
@@ -440,9 +520,10 @@ export function useGame() {
   return {
     startedAt,
     dictReady: Boolean(dict),
-    ready: Boolean(dict && answerEntry && difficulty),
-    needDifficulty: Boolean(dict) && !difficulty,
+    ready: Boolean(dict && answerEntry && difficulty && playMode),
+    needMode: Boolean(dict) && (!difficulty || !playMode),
     dictError,
+    playMode,
     difficulty,
     wordLength,
     guessCount: dict ? Object.keys(dict.guesses).length : 0,
@@ -470,8 +551,11 @@ export function useGame() {
     recordSaved,
     markRecordSaved: () => setRecordSaved(true),
     nextRound,
-    startDifficulty,
-    changeDifficulty,
+    startGame,
+    changeMode,
+    refreshStreak,
     celebrate,
+    currentStreak,
+    challengeMode,
   }
 }

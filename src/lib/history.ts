@@ -6,6 +6,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  where,
+  writeBatch,
 } from 'firebase/firestore'
 import type { Difficulty } from '../data/words'
 import { getDb, isFirebaseConfigured } from './firebase'
@@ -22,6 +24,7 @@ export type HistoryRecord = {
   savedAt: number
   difficulty: Difficulty
   wordLength: number
+  uid?: string
 }
 
 export type RankMode = 'wins' | 'fastest' | 'attempts'
@@ -64,6 +67,7 @@ function parseRecord(id: string, data: Record<string, unknown>): HistoryRecord {
     savedAt: Number(data.savedAt ?? Date.now()),
     difficulty,
     wordLength,
+    uid: data.uid ? String(data.uid) : undefined,
   }
 }
 
@@ -205,7 +209,7 @@ export async function loadRanking(
 }
 
 export async function saveHistoryRecord(
-  record: Omit<HistoryRecord, 'id' | 'savedAt'>,
+  record: Omit<HistoryRecord, 'id' | 'savedAt'> & { uid?: string },
 ): Promise<HistoryRecord> {
   if (!isFirebaseConfigured()) {
     throw new Error('공유 기록이 아직 설정되지 않았어요')
@@ -213,7 +217,7 @@ export async function saveHistoryRecord(
 
   const savedAt = Date.now()
   const name = record.name.trim().slice(0, 20)
-  const payload = {
+  const payload: Record<string, unknown> = {
     name,
     word: record.word,
     seconds: Math.max(0, Math.round(record.seconds)),
@@ -226,18 +230,63 @@ export async function saveHistoryRecord(
     savedAt,
     createdAt: serverTimestamp(),
   }
+  if (record.uid) payload.uid = record.uid
 
   const ref = await addDoc(collection(getDb(), COLLECTION), payload)
-  localStorage.setItem(LAST_NAME_KEY, name)
+  setLastName(name)
 
   return {
     id: ref.id,
-    ...payload,
+    name,
+    word: record.word,
+    seconds: Number(payload.seconds),
+    attempts: record.attempts,
+    maxAttempts: record.maxAttempts,
+    won: record.won,
+    dateKey: record.dateKey,
+    difficulty: record.difficulty,
+    wordLength: record.wordLength,
+    savedAt,
+    uid: record.uid,
   }
+}
+
+/** 계정 닉네임 변경 시 해당 uid 기록의 표시 이름도 함께 갱신 */
+export async function renameUserRecords(
+  uid: string,
+  newName: string,
+): Promise<void> {
+  if (!isFirebaseConfigured() || !uid) return
+  const name = newName.trim().slice(0, 20)
+  if (!name) return
+
+  const snap = await getDocs(
+    query(collection(getDb(), COLLECTION), where('uid', '==', uid), limit(500)),
+  )
+  if (snap.empty) return
+
+  const db = getDb()
+  let batch = writeBatch(db)
+  let count = 0
+  for (const d of snap.docs) {
+    batch.update(d.ref, { name })
+    count += 1
+    if (count >= 450) {
+      await batch.commit()
+      batch = writeBatch(db)
+      count = 0
+    }
+  }
+  if (count > 0) await batch.commit()
 }
 
 export function getLastName(): string {
   return localStorage.getItem(LAST_NAME_KEY) ?? ''
+}
+
+export function setLastName(name: string): void {
+  const trimmed = name.trim().slice(0, 20)
+  if (trimmed) localStorage.setItem(LAST_NAME_KEY, trimmed)
 }
 
 export function formatSeconds(total: number): string {
