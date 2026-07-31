@@ -12,6 +12,13 @@ type Props = {
   onClose: () => void
 }
 
+function recordHeadline(r: HistoryRecord): string {
+  if (r.playMode === 'daily') {
+    return r.won ? '오늘의 단어 성공!' : '오늘의 단어 실패'
+  }
+  return `단어 「${r.word}」`
+}
+
 export function HistoryModal({ open, onClose }: Props) {
   const [records, setRecords] = useState<HistoryRecord[]>([])
   const [loading, setLoading] = useState(false)
@@ -62,7 +69,7 @@ export function HistoryModal({ open, onClose }: Props) {
       >
         <h2 id="history-title">기록</h2>
         <p className="modal-sub">
-          메인게임 기록만 보여요 · 오늘의 단어는 정답 공유 방지를 위해 제외
+          메인게임은 단어가 보이고, 오늘의 단어는 성공/실패만 보여요
         </p>
 
         {loading ? (
@@ -82,19 +89,29 @@ export function HistoryModal({ open, onClose }: Props) {
                   </span>
                 </div>
                 <div className="history-meta">
-                  <span>단어 「{r.word}」</span>
+                  <span
+                    className={
+                      r.playMode === 'daily' ? 'history-daily-line' : undefined
+                    }
+                  >
+                    {recordHeadline(r)}
+                  </span>
                   <span>
                     {r.difficulty === 'hard' ? '어려움' : '쉬움'}
                   </span>
-                  <span>{formatSeconds(r.seconds)}</span>
-                  <span>
-                    {r.won
-                      ? `${r.attempts}/${r.maxAttempts}회`
-                      : `${r.maxAttempts}회 실패`}
-                  </span>
-                  <span className={r.hintUsed ? 'tag-hint' : 'tag-no-hint'}>
-                    {r.hintUsed ? '힌트 사용' : '힌트 없음'}
-                  </span>
+                  {r.playMode !== 'daily' && (
+                    <>
+                      <span>{formatSeconds(r.seconds)}</span>
+                      <span>
+                        {r.won
+                          ? `${r.attempts}/${r.maxAttempts}회`
+                          : `${r.maxAttempts}회 실패`}
+                      </span>
+                      <span className={r.hintUsed ? 'tag-hint' : 'tag-no-hint'}>
+                        {r.hintUsed ? '힌트 사용' : '힌트 없음'}
+                      </span>
+                    </>
+                  )}
                 </div>
                 <div className="history-date">{formatRecordDate(r.savedAt)}</div>
               </li>

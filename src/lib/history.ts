@@ -150,8 +150,9 @@ function isDailyAnswerWord(
 }
 
 /**
- * 데일리·데일리 정답 기록은 공유 기록/랭킹(승수·최단시간·최단시도)에서 제외.
- * playMode 없는 옛 기록도 dateKey 기준 데일리 정답이면 제외.
+ * 공유 기록용 필터.
+ * - 데일리: 목록에는 보이되 정답 단어는 비움
+ * - 메인게임: 오늘/해당일 데일리 정답 단어는 스포일러라 숨김
  */
 async function filterPublicRecords(
   records: HistoryRecord[],
@@ -168,14 +169,20 @@ async function filterPublicRecords(
     /* 사전 실패 시 playMode만으로 걸러냄 */
   }
 
-  return records.filter((r) => {
-    if (HIDDEN_RECORD_IDS.has(r.id)) return false
-    if (r.playMode === 'daily') return false
-    if (todaySpoilers.has(r.word)) return false
-    if (dict && isDailyAnswerWord(dict, r.word, r.difficulty, r.dateKey)) {
-      return false
+  return records.flatMap((r) => {
+    if (HIDDEN_RECORD_IDS.has(r.id)) return []
+    if (r.playMode === 'daily') {
+      return [{ ...r, word: '' }]
     }
-    return true
+    if (r.word && todaySpoilers.has(r.word)) return []
+    if (
+      r.word &&
+      dict &&
+      isDailyAnswerWord(dict, r.word, r.difficulty, r.dateKey)
+    ) {
+      return []
+    }
+    return [r]
   })
 }
 
@@ -198,6 +205,7 @@ type Agg = {
   name: string
   wins: number
   lastSavedAt: number
+  /** 메인게임 기준. 없으면 Infinity */
   bestSeconds: number
   bestAttempts: number
   bestAttemptsSeconds: number
@@ -220,7 +228,6 @@ async function fetchRecordsSnap() {
 
 async function loadWinRecords(difficulty: Difficulty): Promise<Agg[]> {
   const snap = await fetchRecordsSnap()
-  // 메인게임(practice)만 — 데일리·오늘 정답 단어는 filterPublicRecords에서 제외
   const parsed = await filterPublicRecords(
     snap.docs.map((d) =>
       parseRecord(d.id, d.data() as Record<string, unknown>),
@@ -231,26 +238,27 @@ async function loadWinRecords(difficulty: Difficulty): Promise<Agg[]> {
   for (const r of parsed) {
     if (!r.won) continue
     if (r.difficulty !== difficulty) continue
-    // playMode 없는 옛 기록은 메인게임으로 간주하되, 데일리로 표기된 것만 제외됨
-    if (r.playMode === 'daily') continue
     const name = r.name.trim()
     if (!name) continue
 
+    // 승수: 데일리+메인게임 / 최단시간·최단시도: 메인게임만
+    const isDaily = r.playMode === 'daily'
     const prev = map.get(name)
     if (!prev) {
       map.set(name, {
         name,
         wins: 1,
         lastSavedAt: r.savedAt,
-        bestSeconds: r.seconds,
-        bestAttempts: r.attempts,
-        bestAttemptsSeconds: r.seconds,
+        bestSeconds: isDaily ? Number.POSITIVE_INFINITY : r.seconds,
+        bestAttempts: isDaily ? Number.POSITIVE_INFINITY : r.attempts,
+        bestAttemptsSeconds: isDaily ? Number.POSITIVE_INFINITY : r.seconds,
       })
       continue
     }
 
     prev.wins += 1
     prev.lastSavedAt = Math.max(prev.lastSavedAt, r.savedAt)
+    if (isDaily) continue
     if (r.seconds < prev.bestSeconds) prev.bestSeconds = r.seconds
     if (
       r.attempts < prev.bestAttempts ||
@@ -276,6 +284,7 @@ export async function loadRanking(
   if (mode === 'fastest') {
     return withCompetitionRanks(
       list
+        .filter((r) => Number.isFinite(r.bestSeconds))
         .sort((a, b) => {
           if (a.bestSeconds !== b.bestSeconds) {
             return a.bestSeconds - b.bestSeconds
@@ -296,6 +305,7 @@ export async function loadRanking(
   if (mode === 'attempts') {
     return withCompetitionRanks(
       list
+        .filter((r) => Number.isFinite(r.bestAttempts))
         .sort((a, b) => {
           if (a.bestAttempts !== b.bestAttempts) {
             return a.bestAttempts - b.bestAttempts
@@ -336,16 +346,17 @@ export async function saveHistoryRecord(
   if (!isFirebaseConfigured()) {
     throw new Error('공유 기록이 아직 설정되지 않았어요')
   }
-  if (record.playMode === 'daily') {
-    throw new Error('오늘의 단어는 공유 기록에 남길 수 없어요')
-  }
 
+  const playMode: HistoryPlayMode =
+    record.playMode === 'daily' ? 'daily' : 'practice'
+  // 데일리는 정답 단어를 DB에도 남기지 않음
+  const word = playMode === 'daily' ? '' : record.word
   const savedAt = Date.now()
   const name = record.name.trim().slice(0, 20)
   const hintUsed = Boolean(record.hintUsed)
   const payload: Record<string, unknown> = {
     name,
-    word: record.word,
+    word,
     seconds: Math.max(0, Math.round(record.seconds)),
     attempts: record.attempts,
     maxAttempts: record.maxAttempts,
@@ -353,7 +364,7 @@ export async function saveHistoryRecord(
     dateKey: record.dateKey,
     difficulty: record.difficulty,
     wordLength: record.wordLength,
-    playMode: 'practice',
+    playMode,
     hintUsed,
     savedAt,
     createdAt: serverTimestamp(),
@@ -366,7 +377,7 @@ export async function saveHistoryRecord(
   return {
     id: ref.id,
     name,
-    word: record.word,
+    word,
     seconds: Number(payload.seconds),
     attempts: record.attempts,
     maxAttempts: record.maxAttempts,
@@ -374,7 +385,7 @@ export async function saveHistoryRecord(
     dateKey: record.dateKey,
     difficulty: record.difficulty,
     wordLength: record.wordLength,
-    playMode: 'practice',
+    playMode,
     hintUsed,
     savedAt,
     uid: record.uid,

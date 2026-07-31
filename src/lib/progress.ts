@@ -133,24 +133,44 @@ export type XpRankEntry = {
   rank: number
 }
 
-/** 로그인 유저 누적 XP 내림차순 */
+const NICKNAMES = 'nicknames'
+
+function nicknameKey(name: string): string {
+  return name.trim().normalize('NFC').toLocaleLowerCase('ko-KR')
+}
+
+/** 로그인 유저(닉네임 계정) 누적 XP 내림차순 — 비로그인/게스트 제외 */
 export async function loadXpRanking(limitCount = 50): Promise<XpRankEntry[]> {
   if (!isFirebaseConfigured()) return []
 
-  const snap = await getDocs(query(collection(getDb(), USERS), limit(500)))
-  const rows = snap.docs
+  const [userSnap, nickSnap] = await Promise.all([
+    getDocs(query(collection(getDb(), USERS), limit(500))),
+    getDocs(query(collection(getDb(), NICKNAMES), limit(500))),
+  ])
+
+  /** nickKey → uid (닉네임 계정으로 가입한 유저만) */
+  const nickOwner = new Map<string, string>()
+  for (const d of nickSnap.docs) {
+    const uid = String(d.data().uid ?? '').trim()
+    if (uid) nickOwner.set(d.id, uid)
+  }
+
+  const rows = userSnap.docs
     .map((d) => {
       const data = d.data() as Record<string, unknown>
       const nickname = String(data.nickname ?? '').trim().slice(0, 20)
       const xp = Math.max(0, Number(data.xp ?? 0))
       return {
         uid: d.id,
-        nickname: nickname || '플레이어',
+        nickname,
         xp,
         level: levelFromTotalXp(xp),
       }
     })
-    .filter((r) => r.xp > 0)
+    .filter((r) => {
+      if (r.xp <= 0 || !r.nickname) return false
+      return nickOwner.get(nicknameKey(r.nickname)) === r.uid
+    })
 
   const ordered = [...rows].sort((a, b) => {
     if (b.xp !== a.xp) return b.xp - a.xp

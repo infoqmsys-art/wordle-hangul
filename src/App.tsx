@@ -32,6 +32,14 @@ function App() {
   const [howto, setHowto] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [rankingOpen, setRankingOpen] = useState(false)
+  const [rankingVariant, setRankingVariant] = useState<'classic' | 'xp'>(
+    'classic',
+  )
+
+  const openRanking = (variant: 'classic' | 'xp' = 'classic') => {
+    setRankingVariant(variant)
+    setRankingOpen(true)
+  }
   const [profileOpen, setProfileOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [modePickerOpen, setModePickerOpen] = useState(false)
@@ -119,24 +127,22 @@ function App() {
       if (game.status === 'playing') autoSaveKey.current = null
       return
     }
-    // 오늘의 단어는 정답 스포일러라 공유 기록에 남기지 않음
-    if (game.playMode === 'daily') {
-      game.markRecordSaved()
-      return
-    }
     const nick = (auth.user?.nickname?.trim() || getLastName().trim()).slice(
       0,
       20,
     )
+    // 닉네임 없으면 저장 불가 (비로그인 + 이름 미설정)
     if (!nick) return
-    const key = `${game.answerWord}:${game.dateKey}:${game.difficulty}`
+    if (!game.playMode) return
+
+    const key = `${game.playMode}:${game.answerWord}:${game.dateKey}:${game.difficulty}:${game.status}:${game.rows.length}`
     if (autoSaveKey.current === key) return
     autoSaveKey.current = key
 
-    let cancelled = false
-    saveHistoryRecord({
+    // 성공/실패(5회) 직후 1회 저장. 데일리는 정답 단어 없이 저장
+    void saveHistoryRecord({
       name: nick,
-      word: game.answerWord,
+      word: game.playMode === 'daily' ? '' : game.answerWord,
       seconds: game.seconds,
       attempts: game.rows.length,
       maxAttempts: MAX_ATTEMPTS,
@@ -144,20 +150,16 @@ function App() {
       dateKey: game.dateKey,
       difficulty: game.difficulty,
       wordLength: game.wordLength,
-      playMode: 'practice',
+      playMode: game.playMode,
       hintUsed: game.hintUsedThisGame,
       uid: auth.user?.uid,
     })
       .then(() => {
-        if (!cancelled) game.markRecordSaved()
+        game.markRecordSaved()
       })
       .catch(() => {
-        if (!cancelled) autoSaveKey.current = null
+        if (autoSaveKey.current === key) autoSaveKey.current = null
       })
-
-    return () => {
-      cancelled = true
-    }
   }, [
     game.status,
     game.recordSaved,
@@ -324,11 +326,20 @@ function App() {
               <button
                 type="button"
                 onClick={() => {
-                  setRankingOpen(true)
+                  openRanking('classic')
                   setMenuOpen(false)
                 }}
               >
                 랭킹
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  openRanking('xp')
+                  setMenuOpen(false)
+                }}
+              >
+                유저랭킹
               </button>
               <button
                 type="button"
@@ -375,7 +386,7 @@ function App() {
               profile={auth.user}
               streak={game.currentStreak}
               onOpenProfile={openProfile}
-              onOpenRanking={() => setRankingOpen(true)}
+              onOpenRanking={() => openRanking('classic')}
               onOpenShop={
                 auth.user
                   ? () => {
@@ -411,6 +422,7 @@ function App() {
         <RankingModal
           open={rankingOpen}
           onClose={() => setRankingOpen(false)}
+          variant={rankingVariant}
           initialDifficulty="easy"
           onOpenHistory={() => {
             setRankingOpen(false)
@@ -520,32 +532,41 @@ function App() {
             <button
               type="button"
               onClick={() => {
-                setRankingOpen(true)
+                openRanking('classic')
                 setMenuOpen(false)
               }}
             >
               랭킹
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                openRanking('xp')
+                setMenuOpen(false)
+              }}
+            >
+              유저랭킹
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setHowto(true)
+                setMenuOpen(false)
+              }}
+            >
+              게임 방법
+            </button>
+            {auth.user && (
               <button
                 type="button"
                 onClick={() => {
-                  setHowto(true)
+                  setShopOpen(true)
                   setMenuOpen(false)
                 }}
               >
-                게임 방법
+                상점
               </button>
-              {auth.user && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShopOpen(true)
-                    setMenuOpen(false)
-                  }}
-                >
-                  상점
-                </button>
-              )}
+            )}
             {finished && (
               <button
                 type="button"
@@ -805,6 +826,7 @@ function App() {
       <RankingModal
         open={rankingOpen}
         onClose={() => setRankingOpen(false)}
+        variant={rankingVariant}
         initialDifficulty={game.difficulty ?? 'easy'}
         onOpenHistory={() => {
           setRankingOpen(false)

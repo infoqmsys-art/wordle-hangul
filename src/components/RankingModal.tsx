@@ -12,11 +12,11 @@ import { loadXpRanking, type XpRankEntry } from '../lib/progress'
 type Props = {
   open: boolean
   onClose: () => void
+  /** classic = 단어킹, xp = 유저랭킹(누적 XP) */
+  variant?: 'classic' | 'xp'
   initialDifficulty?: Difficulty
   onOpenHistory?: () => void
 }
-
-type Board = 'classic' | 'xp'
 
 const MODE_LABEL: Record<RankMode, string> = {
   wins: '승수',
@@ -27,10 +27,10 @@ const MODE_LABEL: Record<RankMode, string> = {
 export function RankingModal({
   open,
   onClose,
+  variant = 'classic',
   initialDifficulty = 'easy',
   onOpenHistory,
 }: Props) {
-  const [board, setBoard] = useState<Board>('classic')
   const [tab, setTab] = useState<Difficulty>(initialDifficulty)
   const [mode, setMode] = useState<RankMode>('wins')
   const [ranking, setRanking] = useState<RankEntry[]>([])
@@ -41,11 +41,10 @@ export function RankingModal({
 
   useEffect(() => {
     if (!open) return
-    setBoard('classic')
     setTab(initialDifficulty)
     setMode('wins')
     setHelpOpen(false)
-  }, [open, initialDifficulty])
+  }, [open, initialDifficulty, variant])
 
   useEffect(() => {
     if (!open) return
@@ -62,7 +61,7 @@ export function RankingModal({
     }
 
     const load =
-      board === 'xp'
+      variant === 'xp'
         ? loadXpRanking().then((list) => {
             if (!alive) return
             setXpRanking(list)
@@ -88,14 +87,14 @@ export function RankingModal({
     return () => {
       alive = false
     }
-  }, [open, board, tab, mode])
+  }, [open, variant, tab, mode])
 
   if (!open) return null
 
-  const emptyLabel =
-    board === 'xp'
-      ? '아직 XP 기록이 없어요'
-      : `아직 ${DIFFICULTY_META[tab].label} 기록이 없어요`
+  const isXp = variant === 'xp'
+  const emptyLabel = isXp
+    ? '아직 XP 기록이 없어요'
+    : `아직 ${DIFFICULTY_META[tab].label} 기록이 없어요`
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -108,7 +107,7 @@ export function RankingModal({
       >
         <div className="rank-title-row">
           <h2 id="rank-title">
-            {board === 'xp' ? '푸들푸들 유저랭킹' : '푸들푸들 이번주 단어킹'}
+            {isXp ? '푸들푸들 유저랭킹' : '푸들푸들 이번주 단어킹'}
           </h2>
           <button
             type="button"
@@ -123,110 +122,88 @@ export function RankingModal({
 
         {helpOpen && (
           <div className="rank-help-panel" role="note">
-            <p>
-              <strong>유저랭킹</strong>은 로그인 유저의 누적 XP가 높은
-              순이에요. 같은 XP면 공동 순위입니다.
-            </p>
-            <p>
-              <strong>단어킹</strong>은 메인게임 기록만 집계해요. 쉬움·어려움별
-              승수 / 최단시간 / 최단시도 순위이며, 같은 기록이면 같은
-              순위(공동)입니다.
-            </p>
-            <p>
-              <strong>오늘의 단어</strong>는 정답이 공유될 수 있어서 기록·승수·
-              최단시간·최단시도에 넣지 않아요.
-            </p>
-            <p>
-              <strong>주간 XP 보상</strong>은 로그인 유저만, 이번 주 모은 XP
-              순위로 매주 <strong>월요일 09:00</strong>에 정산해요.
-            </p>
-            <ul>
-              <li>1위 +300 XP</li>
-              <li>2위 +180 XP</li>
-              <li>3위 +100 XP</li>
-              <li>4~10위 +40 XP</li>
-              <li>그 외 참가 +15 XP</li>
-            </ul>
-            <p>
-              보상은 홈·내 정보에서 <strong>받기</strong>로 수령하고, 정산 후
-              <strong> 7일</strong>이 지나면 사라져요. 공동 순위면 보상도
-              같습니다.
-            </p>
+            {isXp ? (
+              <p>
+                <strong>유저랭킹</strong>은 로그인한 계정의 누적 XP가 높은
+                순이에요. 비로그인은 제외되며, 같은 XP면 공동 순위입니다.
+              </p>
+            ) : (
+              <>
+                <p>
+                  <strong>단어킹</strong>은 쉬움·어려움별 승수 / 최단시간 /
+                  최단시도 순위예요. 같은 기록이면 같은 순위(공동)입니다.
+                </p>
+                <p>
+                  <strong>승수</strong>는 메인게임 + 오늘의 단어를 합치고,
+                  <strong> 최단시간·최단시도</strong>는 메인게임만 집계해요.
+                  오늘의 단어 기록에는 정답 단어가 나오지 않아요.
+                </p>
+                <p>
+                  <strong>주간 XP 보상</strong>은 로그인 유저만, 이번 주 모은
+                  XP 순위로 매주 <strong>월요일 09:00</strong>에 정산해요.
+                </p>
+                <ul>
+                  <li>1위 +300 XP</li>
+                  <li>2위 +180 XP</li>
+                  <li>3위 +100 XP</li>
+                  <li>4~10위 +40 XP</li>
+                  <li>그 외 참가 +15 XP</li>
+                </ul>
+                <p>
+                  보상은 홈·내 정보에서 <strong>받기</strong>로 수령하고, 정산
+                  후 <strong>7일</strong>이 지나면 사라져요. 공동 순위면 보상도
+                  같습니다.
+                </p>
+              </>
+            )}
           </div>
         )}
 
-        <div className="rank-filters">
-          <div className="rank-tabs" role="tablist" aria-label="랭킹 종류">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={board === 'classic'}
-              className={board === 'classic' ? 'on' : ''}
-              onClick={() => setBoard('classic')}
-            >
-              단어킹
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={board === 'xp'}
-              className={board === 'xp' ? 'on' : ''}
-              onClick={() => setBoard('xp')}
-            >
-              유저랭킹
-            </button>
+        {!isXp && (
+          <div className="rank-filters">
+            <div className="rank-tabs" role="tablist" aria-label="난이도">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'easy'}
+                className={tab === 'easy' ? 'on' : ''}
+                onClick={() => setTab('easy')}
+              >
+                쉬움
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'hard'}
+                className={tab === 'hard' ? 'on' : ''}
+                onClick={() => setTab('hard')}
+              >
+                어려움
+              </button>
+            </div>
+            <div className="rank-mode-tabs" role="tablist" aria-label="기준">
+              {(Object.keys(MODE_LABEL) as RankMode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === m}
+                  className={mode === m ? 'on' : ''}
+                  onClick={() => setMode(m)}
+                >
+                  {MODE_LABEL[m]}
+                </button>
+              ))}
+            </div>
           </div>
-
-          {board === 'classic' && (
-            <>
-              <div className="rank-tabs" role="tablist" aria-label="난이도">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === 'easy'}
-                  className={tab === 'easy' ? 'on' : ''}
-                  onClick={() => setTab('easy')}
-                >
-                  쉬움
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === 'hard'}
-                  className={tab === 'hard' ? 'on' : ''}
-                  onClick={() => setTab('hard')}
-                >
-                  어려움
-                </button>
-              </div>
-              <div className="rank-mode-tabs" role="tablist" aria-label="기준">
-                {(Object.keys(MODE_LABEL) as RankMode[]).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === m}
-                    className={mode === m ? 'on' : ''}
-                    onClick={() => setMode(m)}
-                  >
-                    {MODE_LABEL[m]}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {board === 'xp' && (
-            <p className="rank-board-hint">누적 XP · 로그인 유저</p>
-          )}
-        </div>
+        )}
 
         <div className="rank-body">
           {loading ? (
             <p className="history-empty">불러오는 중...</p>
           ) : error ? (
             <p className="history-empty">{error}</p>
-          ) : board === 'xp' ? (
+          ) : isXp ? (
             xpRanking.length === 0 ? (
               <p className="history-empty">{emptyLabel}</p>
             ) : (
@@ -274,7 +251,7 @@ export function RankingModal({
         </div>
 
         <div className="rank-footer">
-          {onOpenHistory && (
+          {onOpenHistory && !isXp && (
             <div className="rank-footer-links">
               <button
                 type="button"
