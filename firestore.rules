@@ -15,7 +15,9 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // XP 유저랭킹 표시용 (닉네임·XP 등). 쓰기는 본인만.
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
     match /nicknames/{nickId} {
       allow read: if true;

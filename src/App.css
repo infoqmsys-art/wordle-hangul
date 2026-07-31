@@ -2217,6 +2217,22 @@ button.tile {
   grid-template-columns: 1fr 1fr 1fr;
 }
 
+.rank-board-hint {
+  margin: 0;
+  padding: 2px 4px 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.rank-level {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 0.78em;
+  font-weight: 700;
+}
+
 .rank-tabs button,
 .rank-mode-tabs button {
   border: none;

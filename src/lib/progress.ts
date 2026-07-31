@@ -124,6 +124,45 @@ export type WeeklyRankEntry = {
   updatedAt: number
 }
 
+/** 누적 XP 유저 랭킹 한 줄 */
+export type XpRankEntry = {
+  uid: string
+  nickname: string
+  xp: number
+  level: number
+  rank: number
+}
+
+/** 로그인 유저 누적 XP 내림차순 */
+export async function loadXpRanking(limitCount = 50): Promise<XpRankEntry[]> {
+  if (!isFirebaseConfigured()) return []
+
+  const snap = await getDocs(query(collection(getDb(), USERS), limit(500)))
+  const rows = snap.docs
+    .map((d) => {
+      const data = d.data() as Record<string, unknown>
+      const nickname = String(data.nickname ?? '').trim().slice(0, 20)
+      const xp = Math.max(0, Number(data.xp ?? 0))
+      return {
+        uid: d.id,
+        nickname: nickname || '플레이어',
+        xp,
+        level: levelFromTotalXp(xp),
+      }
+    })
+    .filter((r) => r.xp > 0)
+
+  const ordered = [...rows].sort((a, b) => {
+    if (b.xp !== a.xp) return b.xp - a.xp
+    if (b.level !== a.level) return b.level - a.level
+    return a.nickname.localeCompare(b.nickname, 'ko')
+  })
+
+  return assignCompetitionRanks(ordered.slice(0, limitCount), (e) => e.xp, true).map(
+    ({ item, rank }) => ({ ...item, rank }),
+  )
+}
+
 type WeekEntryRaw = {
   uid: string
   nickname: string
