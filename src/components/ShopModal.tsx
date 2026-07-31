@@ -121,7 +121,7 @@ export function ShopModal({
         )}
 
         <p className="shop-earn-note">
-          초크가루: 승리 시 연습 +3 / 오늘의 단어 +8 · 실패해도 +1
+          초크가루: 승리 시 메인게임 +3 / 오늘의 단어 +8 · 실패해도 +1
         </p>
 
         <button type="button" className="btn-primary full" onClick={onClose}>

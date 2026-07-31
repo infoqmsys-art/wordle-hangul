@@ -61,7 +61,9 @@ export function HistoryModal({ open, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="history-title">기록</h2>
-        <p className="modal-sub">모든 플레이어의 기록이 여기에 모여요</p>
+        <p className="modal-sub">
+          메인게임 기록만 보여요 · 오늘의 단어는 정답 공유 방지를 위해 제외
+        </p>
 
         {loading ? (
           <p className="history-empty">불러오는 중...</p>
@@ -89,6 +91,9 @@ export function HistoryModal({ open, onClose }: Props) {
                     {r.won
                       ? `${r.attempts}/${r.maxAttempts}회`
                       : `${r.maxAttempts}회 실패`}
+                  </span>
+                  <span className={r.hintUsed ? 'tag-hint' : 'tag-no-hint'}>
+                    {r.hintUsed ? '힌트 사용' : '힌트 없음'}
                   </span>
                 </div>
                 <div className="history-date">{formatRecordDate(r.savedAt)}</div>

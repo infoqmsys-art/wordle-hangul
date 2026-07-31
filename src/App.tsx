@@ -145,6 +145,7 @@ function App() {
       difficulty: game.difficulty,
       wordLength: game.wordLength,
       playMode: 'practice',
+      hintUsed: game.hintUsedThisGame,
       uid: auth.user?.uid,
     })
       .then(() => {
@@ -167,6 +168,7 @@ function App() {
     game.seconds,
     game.rows.length,
     game.wordLength,
+    game.hintUsedThisGame,
     game.markRecordSaved,
     auth.user?.nickname,
     auth.user?.uid,
@@ -179,7 +181,7 @@ function App() {
       : game.playMode === 'daily'
         ? '오늘의 단어'
         : game.playMode === 'practice'
-          ? '연습'
+          ? '메인게임'
           : null
 
   if (game.dictError) {
@@ -247,7 +249,11 @@ function App() {
     />
   )
 
-  const headerAuthButton = auth.user ? (
+  const headerAuthButton = !auth.ready ? (
+    <span className="header-auth is-loading" aria-hidden>
+      ···
+    </span>
+  ) : auth.user ? (
     <button
       type="button"
       className="header-auth is-user"
@@ -356,6 +362,13 @@ function App() {
               game.startGame(mode, difficulty)
             }}
           />
+        ) : !auth.ready ? (
+          <div className="home-dash home-dash-loading" aria-busy="true">
+            <div className="home-dash-hero">
+              <h2 className="home-hero-title">푸들푸들</h2>
+              <p className="home-hero-sub">불러오는 중…</p>
+            </div>
+          </div>
         ) : (
           <>
             <HomeDashboard
@@ -479,7 +492,7 @@ function App() {
           <h1>
             {game.playMode === 'daily'
               ? '푸들푸들 오늘의 단어'
-              : '푸들푸들 단어 연습'}
+              : '푸들푸들 메인게임'}
           </h1>
         </div>
         <button
@@ -541,7 +554,7 @@ function App() {
                   setMenuOpen(false)
                 }}
               >
-                {game.playMode === 'daily' ? '연습 이어하기' : '다음 문제 풀기'}
+                {game.playMode === 'daily' ? '메인게임 이어하기' : '다음 문제 풀기'}
               </button>
             )}
           </div>
@@ -747,7 +760,7 @@ function App() {
                 className="cta finish-continue"
                 onClick={() => game.nextRound()}
               >
-                {game.playMode === 'daily' ? '연습 이어하기' : '다음 문제 풀기'}
+                {game.playMode === 'daily' ? '메인게임 이어하기' : '다음 문제 풀기'}
               </button>
             </div>
           </>
@@ -757,7 +770,9 @@ function App() {
               keyStatuses={game.keyStatuses}
               onKey={game.onKey}
               disabled={
-                game.revealingRow !== null || hintPickMode || Boolean(hintConfirm)
+                game.revealingRow !== null ||
+                hintPickMode ||
+                Boolean(hintConfirm)
               }
             />
             <button

@@ -13,8 +13,8 @@ import {
   loadDictionary,
   pickDailyAnswer,
   type Difficulty,
+  type Dictionary,
 } from '../data/words'
-import { formatDateKey } from './game'
 import { getDb, isFirebaseConfigured } from './firebase'
 
 export type HistoryPlayMode = 'daily' | 'practice'
@@ -32,6 +32,8 @@ export type HistoryRecord = {
   difficulty: Difficulty
   wordLength: number
   playMode?: HistoryPlayMode
+  /** 이 판에서 힌트를 썼는지 */
+  hintUsed?: boolean
   uid?: string
 }
 
@@ -66,6 +68,34 @@ const LAST_NAME_KEY = 'wordle-hangul-last-name'
 const MAX_RECORDS = 200
 const COLLECTION = 'records'
 
+/**
+ * DB 삭제 전에도 최단시간/최단시도·기록에서 빼는 데일리성 문서 ID.
+ * (콘솔/스크립트로 지운 뒤에는 없어도 됨)
+ */
+const HIDDEN_RECORD_IDS = new Set([
+  // 2026-07-31 데일리
+  'eg6cmpqyAhySRjO960OG', // 갈색
+  'osPh5YzPHAJT8bSKjGrI', // 갈색
+  'OepNux2iEDI0Pi0J5Ln9', // 온도
+  'VOY5727cVWefvjtKKT3u', // 시디롬 1회 6초
+  'krwchA99XQlaiaUn09nZ', // 시디롬 1회 5초
+  // 2026-07-30 데일리 (갈비/경쟁)
+  '440ZfbKnmroqp1Uw1JJD',
+  'ClcUZNI6p1LdCAtgS71O',
+  'KOoD3pBeNmpy71Am6dFz',
+  'O4lIDV9ocQnAsS0ccF1Y',
+  'O6HxNKDkhld0O8psOK02',
+  'Q8vlZf12XP48O452vpsC',
+  'WWvJ0paQ5F7ft2mDde3j',
+  'a3HTY3cBRpKzQ6UjQaK9',
+  'fMbFbouTA8O8AjDoUDuU',
+  'pZqviAKZ0ixkoLootq5i',
+  'tkvCykyxd6N5IZnN9Ie2',
+  'zSXd7MNiYGXYRsxTOsDw',
+  // 2026-07-29 데일리
+  'XkPSvg2ciKf4xMnoMU9J',
+])
+
 export function isSharedHistoryEnabled(): boolean {
   return isFirebaseConfigured()
 }
@@ -96,19 +126,41 @@ function parseRecord(id: string, data: Record<string, unknown>): HistoryRecord {
     difficulty,
     wordLength,
     playMode,
+    hintUsed: Boolean(data.hintUsed),
     uid: data.uid ? String(data.uid) : undefined,
   }
 }
 
-/** 오늘의 단어 정답이 공유 기록/랭킹에 노출되지 않게 필터 */
+function parseDateKey(dateKey: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey)
+  if (!m) return null
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+}
+
+/** 해당 날짜·난이도의 데일리 정답과 같으면 데일리 플레이로 간주 */
+function isDailyAnswerWord(
+  dict: Dictionary,
+  word: string,
+  difficulty: Difficulty,
+  dateKey: string,
+): boolean {
+  const date = parseDateKey(dateKey)
+  if (!date) return false
+  return pickDailyAnswer(dict, difficulty, date).word === word
+}
+
+/**
+ * 데일리·데일리 정답 기록은 공유 기록/랭킹(승수·최단시간·최단시도)에서 제외.
+ * playMode 없는 옛 기록도 dateKey 기준 데일리 정답이면 제외.
+ */
 async function filterPublicRecords(
   records: HistoryRecord[],
 ): Promise<HistoryRecord[]> {
-  const today = formatDateKey()
-  let spoilers = new Set<string>()
+  let dict: Dictionary | null = null
+  let todaySpoilers = new Set<string>()
   try {
-    const dict = await loadDictionary()
-    spoilers = new Set([
+    dict = await loadDictionary()
+    todaySpoilers = new Set([
       pickDailyAnswer(dict, 'easy').word,
       pickDailyAnswer(dict, 'hard').word,
     ])
@@ -117,8 +169,12 @@ async function filterPublicRecords(
   }
 
   return records.filter((r) => {
+    if (HIDDEN_RECORD_IDS.has(r.id)) return false
     if (r.playMode === 'daily') return false
-    if (r.dateKey === today && spoilers.has(r.word)) return false
+    if (todaySpoilers.has(r.word)) return false
+    if (dict && isDailyAnswerWord(dict, r.word, r.difficulty, r.dateKey)) {
+      return false
+    }
     return true
   })
 }
@@ -164,6 +220,7 @@ async function fetchRecordsSnap() {
 
 async function loadWinRecords(difficulty: Difficulty): Promise<Agg[]> {
   const snap = await fetchRecordsSnap()
+  // 메인게임(practice)만 — 데일리·오늘 정답 단어는 filterPublicRecords에서 제외
   const parsed = await filterPublicRecords(
     snap.docs.map((d) =>
       parseRecord(d.id, d.data() as Record<string, unknown>),
@@ -174,6 +231,8 @@ async function loadWinRecords(difficulty: Difficulty): Promise<Agg[]> {
   for (const r of parsed) {
     if (!r.won) continue
     if (r.difficulty !== difficulty) continue
+    // playMode 없는 옛 기록은 메인게임으로 간주하되, 데일리로 표기된 것만 제외됨
+    if (r.playMode === 'daily') continue
     const name = r.name.trim()
     if (!name) continue
 
@@ -283,6 +342,7 @@ export async function saveHistoryRecord(
 
   const savedAt = Date.now()
   const name = record.name.trim().slice(0, 20)
+  const hintUsed = Boolean(record.hintUsed)
   const payload: Record<string, unknown> = {
     name,
     word: record.word,
@@ -294,6 +354,7 @@ export async function saveHistoryRecord(
     difficulty: record.difficulty,
     wordLength: record.wordLength,
     playMode: 'practice',
+    hintUsed,
     savedAt,
     createdAt: serverTimestamp(),
   }
@@ -314,6 +375,7 @@ export async function saveHistoryRecord(
     difficulty: record.difficulty,
     wordLength: record.wordLength,
     playMode: 'practice',
+    hintUsed,
     savedAt,
     uid: record.uid,
   }

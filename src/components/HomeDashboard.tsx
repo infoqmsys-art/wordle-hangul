@@ -42,7 +42,7 @@ export function HomeDashboard({
     <div className="home-dash">
       <div className="home-dash-hero">
         <h2 className="home-hero-title">푸들푸들</h2>
-        <p className="home-hero-sub">한글 자모로 맞히는 오늘의 단어</p>
+        <p className="home-hero-sub">한글 자모로 맞히는 단어 게임</p>
         <p className="home-dash-date">{formatToday()}</p>
       </div>
 

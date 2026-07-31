@@ -101,8 +101,13 @@ export function RankingModal({
         {helpOpen && (
           <div className="rank-help-panel" role="note">
             <p>
-              <strong>단어킹</strong>은 쉬움·어려움별 승수 / 최단시간 /
-              최단시도 순위예요. 같은 기록이면 같은 순위(공동)입니다.
+              <strong>단어킹</strong>은 메인게임 기록만 집계해요. 쉬움·어려움별
+              승수 / 최단시간 / 최단시도 순위이며, 같은 기록이면 같은
+              순위(공동)입니다.
+            </p>
+            <p>
+              <strong>오늘의 단어</strong>는 정답이 공유될 수 있어서 기록·승수·
+              최단시간·최단시도에 넣지 않아요.
             </p>
             <p>
               <strong>주간 XP 보상</strong>은 로그인 유저만, 이번 주 모은 XP

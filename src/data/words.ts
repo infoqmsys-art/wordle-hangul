@@ -1,6 +1,15 @@
-import { dailyIndex } from '../lib/game'
+import { dailyIndex, formatDateKey } from '../lib/game'
 
 export type Difficulty = 'easy' | 'hard'
+
+/** 특정 날짜 데일리 정답 수동 지정 (word는 해당 난이도 정답 풀에 있어야 함) */
+const DAILY_OVERRIDES: Record<
+  string,
+  Partial<Record<Difficulty, string>>
+> = {
+  // 2026-07-31: 온도/갈색 → 새로 교체
+  '2026-07-31': { easy: '라면', hard: '교과서' },
+}
 
 export type WordEntry = {
   word: string
@@ -95,5 +104,10 @@ export function pickDailyAnswer(
   date = new Date(),
 ): WordEntry {
   const answers = answersForDifficulty(dict, difficulty)
-  return answers[dailyIndex(answers.length, date)]
+  const overrideWord = DAILY_OVERRIDES[formatDateKey(date)]?.[difficulty]
+  if (overrideWord) {
+    const found = answers.find((a) => a.word === overrideWord)
+    if (found) return found
+  }
+  return answers[dailyIndex(answers.length, date)]!
 }

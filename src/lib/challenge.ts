@@ -100,7 +100,7 @@ export async function shareChallenge(input: {
   })
   const who = input.fromName?.trim()
   const text = [
-    '푸들푸들 오늘의 단어 연습',
+    '푸들푸들',
     who
       ? `${who}님이 보낸 도전 · ${DIFFICULTY_META[input.difficulty].label}`
       : `이 문제 한번 풀어봐! · ${DIFFICULTY_META[input.difficulty].label}`,

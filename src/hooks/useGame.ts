@@ -22,6 +22,7 @@ import {
   findChallengeEntry,
   readChallengeFromUrl,
 } from '../lib/challenge'
+import { isDailyDone, markDailyDone } from '../lib/dailyLock'
 import { normalizeInput } from '../lib/hangul'
 import { playLoseSound, playWinSound } from '../lib/sfx'
 import { getPersonalStats, recordPersonalResult } from '../lib/stats'
@@ -52,7 +53,7 @@ type Persisted = {
   hintGrid?: (string | null)[][]
 }
 
-const SESSION_KEY = 'wordle-hangul-session-v7'
+const SESSION_KEY = 'wordle-hangul-session-v8'
 
 function emptyHintGrid(cols: number): (string | null)[][] {
   return Array.from({ length: MAX_ATTEMPTS }, () =>
@@ -269,12 +270,21 @@ export function useGame() {
         const saved = loadSession()
         if (saved && isValidSavedSession(saved, formatDateKey())) {
           const mode = saved.playMode === 'daily' ? 'daily' : 'practice'
-          applyRound(
-            mode,
-            saved.difficulty,
-            { word: saved.answerWord, jamo: saved.answerJamo },
-            saved,
-          )
+          // 데일리 정답이 바뀌었으면 이전 세션 폐기
+          if (
+            mode === 'daily' &&
+            saved.answerWord !==
+              pickDailyAnswer(loaded, saved.difficulty).word
+          ) {
+            clearSession()
+          } else {
+            applyRound(
+              mode,
+              saved.difficulty,
+              { word: saved.answerWord, jamo: saved.answerJamo },
+              saved,
+            )
+          }
         } else if (saved) {
           clearSession()
         }
@@ -339,6 +349,10 @@ export function useGame() {
   const startGame = useCallback(
     (mode: PlayMode, diff: Difficulty) => {
       if (!dict) return
+      if (mode === 'daily' && isDailyDone(diff)) {
+        showToast('오늘은 이미 플레이했어요')
+        return
+      }
       clearSession()
       setChallengeMode(false)
       const answer =
@@ -351,7 +365,7 @@ export function useGame() {
           diff === 'hard' ? '오늘의 단어 · 어려움' : '오늘의 단어 · 쉬움',
         )
       } else {
-        showToast(diff === 'hard' ? '연습 · 어려움' : '연습 · 쉬움')
+        showToast(diff === 'hard' ? '메인게임 · 어려움' : '메인게임 · 쉬움')
       }
     },
     [dict, applyRound, showToast],
@@ -361,10 +375,10 @@ export function useGame() {
     if (!dict || !difficulty) return
     clearSession()
     setChallengeMode(false)
-    // 오늘의 단어가 끝나면 같은 난이도 연습으로 이어감
+    // 오늘의 단어가 끝나면 같은 난이도 메인게임으로 이어감
     const answer = pickRandomAnswer(dict, difficulty, loadRecentWords())
     applyRound('practice', difficulty, answer)
-    showToast(playMode === 'daily' ? '연습으로 이어갈게요!' : '다음 문제!')
+    showToast(playMode === 'daily' ? '메인게임으로 이어갈게요!' : '다음 문제!')
   }, [dict, difficulty, playMode, applyRound, showToast])
 
   const changeMode = useCallback(() => {
@@ -471,6 +485,10 @@ export function useGame() {
       pushRecentWord(word)
       showToast(message)
 
+      if (playMode === 'daily' && difficulty) {
+        markDailyDone(difficulty)
+      }
+
       const elapsed =
         startedAt == null ? 0 : Math.max(0, (end - startedAt) / 1000)
 
@@ -495,7 +513,7 @@ export function useGame() {
         playLoseSound()
       }
     },
-    [showToast, startedAt],
+    [showToast, startedAt, playMode, difficulty],
   )
 
   const onKey = useCallback(
