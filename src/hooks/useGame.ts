@@ -48,9 +48,32 @@ type Persisted = {
   finishedAt: number | null
   recordSaved: boolean
   statsRecorded?: boolean
+  /** 힌트로 공개된 칸 [행][열] */
+  hintGrid?: (string | null)[][]
 }
 
-const SESSION_KEY = 'wordle-hangul-session-v6'
+const SESSION_KEY = 'wordle-hangul-session-v7'
+
+function emptyHintGrid(cols: number): (string | null)[][] {
+  return Array.from({ length: MAX_ATTEMPTS }, () =>
+    Array.from({ length: cols }, () => null),
+  )
+}
+
+function normalizeHintGrid(
+  raw: unknown,
+  cols: number,
+): (string | null)[][] {
+  if (!Array.isArray(raw) || raw.length !== MAX_ATTEMPTS) {
+    return emptyHintGrid(cols)
+  }
+  return raw.map((row) => {
+    if (!Array.isArray(row) || row.length !== cols) {
+      return Array.from({ length: cols }, () => null)
+    }
+    return row.map((ch) => (typeof ch === 'string' && ch ? ch : null))
+  })
+}
 const RECENT_KEY = 'wordle-hangul-recent-v5'
 const DIFF_KEY = 'wordle-hangul-difficulty'
 const MODE_KEY = 'wordle-hangul-play-mode'
@@ -151,6 +174,9 @@ export function useGame() {
   )
   const [challengeMode, setChallengeMode] = useState(false)
   const [tick, setTick] = useState(0)
+  const [hintGrid, setHintGrid] = useState<(string | null)[][]>(() =>
+    emptyHintGrid(5),
+  )
 
   const wordLength = difficulty
     ? DIFFICULTY_META[difficulty].wordLength
@@ -167,13 +193,22 @@ export function useGame() {
       setDifficulty(diff)
       localStorage.setItem(DIFF_KEY, diff)
       localStorage.setItem(MODE_KEY, mode)
+      const cols = answer.jamo.length
 
       if (saved && saved.answerWord === answer.word) {
         const restored = restoreRows(saved.guesses, answer.jamo)
         setAnswerEntry(answer)
         setRows(restored)
         setStatus(saved.status)
-        setKeyStatuses(buildKeyStatuses(restored))
+        const grid = normalizeHintGrid(saved.hintGrid, cols)
+        setHintGrid(grid)
+        const keys = buildKeyStatuses(restored)
+        grid.forEach((row) => {
+          row.forEach((ch) => {
+            if (ch) keys[ch] = mergeKeyStatus(keys[ch] ?? 'unused', 'hint')
+          })
+        })
+        setKeyStatuses(keys)
         setStartedAt(saved.startedAt)
         setFinishedAt(saved.finishedAt)
         setRecordSaved(saved.recordSaved)
@@ -192,6 +227,7 @@ export function useGame() {
       setCurrent([])
       setStatus('playing')
       setKeyStatuses({})
+      setHintGrid(emptyHintGrid(cols))
       setStartedAt(null)
       setFinishedAt(null)
       setRecordSaved(false)
@@ -266,6 +302,7 @@ export function useGame() {
       finishedAt,
       recordSaved,
       statsRecorded,
+      hintGrid,
     })
   }, [
     rows,
@@ -278,6 +315,7 @@ export function useGame() {
     difficulty,
     playMode,
     dateKey,
+    hintGrid,
   ])
 
   useEffect(() => {
@@ -339,6 +377,7 @@ export function useGame() {
     setCurrent([])
     setStatus('playing')
     setKeyStatuses({})
+    setHintGrid(emptyHintGrid(5))
     setCelebrate(false)
     setStatsRecorded(false)
   }, [])
@@ -362,6 +401,58 @@ export function useGame() {
   const ensureTimer = useCallback(() => {
     setStartedAt((prev) => prev ?? Date.now())
   }, [])
+
+  /** 힌트: 지금 풀고 있는 줄의 빈 칸만 */
+  const canHintAt = useCallback(
+    (row: number, col: number): boolean => {
+      if (!answerEntry || status !== 'playing') return false
+      if (row !== rows.length) return false
+      if (col < 0 || col >= answerEntry.jamo.length) return false
+      if (hintGrid[row]?.[col]) return false
+      return true
+    },
+    [answerEntry, status, hintGrid, rows.length],
+  )
+
+  const hintCandidatesLeft = useCallback((): number => {
+    if (!answerEntry || status !== 'playing') return 0
+    let n = 0
+    const row = rows.length
+    for (let c = 0; c < answerEntry.jamo.length; c++) {
+      if (canHintAt(row, c)) n += 1
+    }
+    return n
+  }, [answerEntry, status, rows.length, canHintAt])
+
+  /** 선택한 칸에 정답 자모 힌트 표시 */
+  const applyHintAt = useCallback(
+    (row: number, col: number): string | null => {
+      if (!answerEntry || status !== 'playing') return null
+      if (!canHintAt(row, col)) {
+        showToast('이 칸에는 힌트를 쓸 수 없어요')
+        return null
+      }
+      const ch = answerEntry.jamo[col]!
+      setHintGrid((prev) => {
+        const next = prev.map((r) => [...r])
+        while (next.length < MAX_ATTEMPTS) {
+          next.push(Array.from({ length: answerEntry.jamo.length }, () => null))
+        }
+        next[row] =
+          next[row] ??
+          Array.from({ length: answerEntry.jamo.length }, () => null)
+        next[row]![col] = ch
+        return next
+      })
+      setKeyStatuses((prev) => ({
+        ...prev,
+        [ch]: mergeKeyStatus(prev[ch] ?? 'unused', 'hint'),
+      }))
+      ensureTimer()
+      return ch
+    },
+    [answerEntry, status, canHintAt, showToast, ensureTimer],
+  )
 
   const finishGame = useCallback(
     (next: 'won' | 'lost', message: string, word: string, attempts: number) => {
@@ -546,6 +637,7 @@ export function useGame() {
     dateKey,
     recordSaved,
     markRecordSaved,
+    statsRecorded,
     nextRound,
     startGame,
     changeMode,
@@ -553,5 +645,9 @@ export function useGame() {
     celebrate,
     currentStreak,
     challengeMode,
+    hintGrid,
+    canHintAt,
+    hintCandidatesLeft,
+    applyHintAt,
   }
 }

@@ -9,8 +9,15 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore'
-import type { Difficulty } from '../data/words'
+import {
+  loadDictionary,
+  pickDailyAnswer,
+  type Difficulty,
+} from '../data/words'
+import { formatDateKey } from './game'
 import { getDb, isFirebaseConfigured } from './firebase'
+
+export type HistoryPlayMode = 'daily' | 'practice'
 
 export type HistoryRecord = {
   id: string
@@ -24,6 +31,7 @@ export type HistoryRecord = {
   savedAt: number
   difficulty: Difficulty
   wordLength: number
+  playMode?: HistoryPlayMode
   uid?: string
 }
 
@@ -31,11 +39,27 @@ export type RankMode = 'wins' | 'fastest' | 'attempts'
 
 export type RankEntry = {
   name: string
+  /** 경쟁 순위 (동일 점수면 같은 등수) */
+  rank: number
   /** 표시용 점수 숫자 (승수 / 초 / 시도) */
   score: number
   scoreLabel: string
   wins: number
   lastSavedAt: number
+}
+
+/** 동일 score면 같은 등수(1224식). 정렬은 이미 되어 있어야 함 */
+function withCompetitionRanks(
+  entries: Omit<RankEntry, 'rank'>[],
+): RankEntry[] {
+  const out: RankEntry[] = []
+  for (let i = 0; i < entries.length; i++) {
+    const score = entries[i]!.score
+    const rank =
+      i > 0 && score === entries[i - 1]!.score ? out[i - 1]!.rank : i + 1
+    out.push({ ...entries[i]!, rank })
+  }
+  return out
 }
 
 const LAST_NAME_KEY = 'wordle-hangul-last-name'
@@ -55,6 +79,10 @@ function parseRecord(id: string, data: Record<string, unknown>): HistoryRecord {
   const difficulty = (
     data.difficulty === 'hard' || wordLength === 7 ? 'hard' : 'easy'
   ) as Difficulty
+  const playMode =
+    data.playMode === 'daily' || data.playMode === 'practice'
+      ? data.playMode
+      : undefined
   return {
     id,
     name: String(data.name ?? ''),
@@ -67,8 +95,32 @@ function parseRecord(id: string, data: Record<string, unknown>): HistoryRecord {
     savedAt: Number(data.savedAt ?? Date.now()),
     difficulty,
     wordLength,
+    playMode,
     uid: data.uid ? String(data.uid) : undefined,
   }
+}
+
+/** 오늘의 단어 정답이 공유 기록/랭킹에 노출되지 않게 필터 */
+async function filterPublicRecords(
+  records: HistoryRecord[],
+): Promise<HistoryRecord[]> {
+  const today = formatDateKey()
+  let spoilers = new Set<string>()
+  try {
+    const dict = await loadDictionary()
+    spoilers = new Set([
+      pickDailyAnswer(dict, 'easy').word,
+      pickDailyAnswer(dict, 'hard').word,
+    ])
+  } catch {
+    /* 사전 실패 시 playMode만으로 걸러냄 */
+  }
+
+  return records.filter((r) => {
+    if (r.playMode === 'daily') return false
+    if (r.dateKey === today && spoilers.has(r.word)) return false
+    return true
+  })
 }
 
 export async function loadHistory(): Promise<HistoryRecord[]> {
@@ -80,7 +132,10 @@ export async function loadHistory(): Promise<HistoryRecord[]> {
     limit(MAX_RECORDS),
   )
   const snap = await getDocs(q)
-  return snap.docs.map((d) => parseRecord(d.id, d.data() as Record<string, unknown>))
+  const list = snap.docs.map((d) =>
+    parseRecord(d.id, d.data() as Record<string, unknown>),
+  )
+  return filterPublicRecords(list)
 }
 
 type Agg = {
@@ -109,10 +164,14 @@ async function fetchRecordsSnap() {
 
 async function loadWinRecords(difficulty: Difficulty): Promise<Agg[]> {
   const snap = await fetchRecordsSnap()
+  const parsed = await filterPublicRecords(
+    snap.docs.map((d) =>
+      parseRecord(d.id, d.data() as Record<string, unknown>),
+    ),
+  )
 
   const map = new Map<string, Agg>()
-  for (const d of snap.docs) {
-    const r = parseRecord(d.id, d.data() as Record<string, unknown>)
+  for (const r of parsed) {
     if (!r.won) continue
     if (r.difficulty !== difficulty) continue
     const name = r.name.trim()
@@ -156,56 +215,60 @@ export async function loadRanking(
   const list = await loadWinRecords(difficulty)
 
   if (mode === 'fastest') {
-    return list
+    return withCompetitionRanks(
+      list
+        .sort((a, b) => {
+          if (a.bestSeconds !== b.bestSeconds) {
+            return a.bestSeconds - b.bestSeconds
+          }
+          return b.lastSavedAt - a.lastSavedAt
+        })
+        .slice(0, 50)
+        .map((r) => ({
+          name: r.name,
+          score: r.bestSeconds,
+          scoreLabel: formatSeconds(r.bestSeconds),
+          wins: r.wins,
+          lastSavedAt: r.lastSavedAt,
+        })),
+    )
+  }
+
+  if (mode === 'attempts') {
+    return withCompetitionRanks(
+      list
+        .sort((a, b) => {
+          if (a.bestAttempts !== b.bestAttempts) {
+            return a.bestAttempts - b.bestAttempts
+          }
+          return b.lastSavedAt - a.lastSavedAt
+        })
+        .slice(0, 50)
+        .map((r) => ({
+          name: r.name,
+          score: r.bestAttempts,
+          scoreLabel: `${r.bestAttempts}회`,
+          wins: r.wins,
+          lastSavedAt: r.lastSavedAt,
+        })),
+    )
+  }
+
+  return withCompetitionRanks(
+    list
       .sort((a, b) => {
-        if (a.bestSeconds !== b.bestSeconds) return a.bestSeconds - b.bestSeconds
         if (b.wins !== a.wins) return b.wins - a.wins
         return b.lastSavedAt - a.lastSavedAt
       })
       .slice(0, 50)
       .map((r) => ({
         name: r.name,
-        score: r.bestSeconds,
-        scoreLabel: formatSeconds(r.bestSeconds),
+        score: r.wins,
+        scoreLabel: `${r.wins}승`,
         wins: r.wins,
         lastSavedAt: r.lastSavedAt,
-      }))
-  }
-
-  if (mode === 'attempts') {
-    return list
-      .sort((a, b) => {
-        if (a.bestAttempts !== b.bestAttempts) {
-          return a.bestAttempts - b.bestAttempts
-        }
-        if (a.bestAttemptsSeconds !== b.bestAttemptsSeconds) {
-          return a.bestAttemptsSeconds - b.bestAttemptsSeconds
-        }
-        return b.lastSavedAt - a.lastSavedAt
-      })
-      .slice(0, 50)
-      .map((r) => ({
-        name: r.name,
-        score: r.bestAttempts,
-        scoreLabel: `${r.bestAttempts}회`,
-        wins: r.wins,
-        lastSavedAt: r.lastSavedAt,
-      }))
-  }
-
-  return list
-    .sort((a, b) => {
-      if (b.wins !== a.wins) return b.wins - a.wins
-      return b.lastSavedAt - a.lastSavedAt
-    })
-    .slice(0, 50)
-    .map((r) => ({
-      name: r.name,
-      score: r.wins,
-      scoreLabel: `${r.wins}승`,
-      wins: r.wins,
-      lastSavedAt: r.lastSavedAt,
-    }))
+      })),
+  )
 }
 
 export async function saveHistoryRecord(
@@ -213,6 +276,9 @@ export async function saveHistoryRecord(
 ): Promise<HistoryRecord> {
   if (!isFirebaseConfigured()) {
     throw new Error('공유 기록이 아직 설정되지 않았어요')
+  }
+  if (record.playMode === 'daily') {
+    throw new Error('오늘의 단어는 공유 기록에 남길 수 없어요')
   }
 
   const savedAt = Date.now()
@@ -227,6 +293,7 @@ export async function saveHistoryRecord(
     dateKey: record.dateKey,
     difficulty: record.difficulty,
     wordLength: record.wordLength,
+    playMode: 'practice',
     savedAt,
     createdAt: serverTimestamp(),
   }
@@ -246,6 +313,7 @@ export async function saveHistoryRecord(
     dateKey: record.dateKey,
     difficulty: record.difficulty,
     wordLength: record.wordLength,
+    playMode: 'practice',
     savedAt,
     uid: record.uid,
   }

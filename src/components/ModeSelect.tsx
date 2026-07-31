@@ -5,38 +5,31 @@ import type { PlayMode } from '../hooks/useGame'
 type Props = {
   open: boolean
   onSelect: (mode: PlayMode, difficulty: Difficulty) => void
-  nickname?: string | null
-  streak?: number
+  onBack?: () => void
 }
 
 function formatHomeDate(date = new Date()): string {
   return `${date.getMonth() + 1}월 ${date.getDate()}일`
 }
 
-export function ModeSelect({
-  open,
-  onSelect,
-  nickname,
-  streak = 0,
-}: Props) {
+export function ModeSelect({ open, onSelect, onBack }: Props) {
   if (!open) return null
 
-  const nick = nickname?.trim()
-  const showStreak = Boolean(nick) && streak >= 2
-
   return (
-    <div className="diff-screen">
+    <div className="diff-screen mode-picker">
       <div className="home-hero">
+        {onBack && (
+          <button
+            type="button"
+            className="mode-back"
+            onClick={onBack}
+            aria-label="홈으로"
+          >
+            ← 홈
+          </button>
+        )}
         <h2 className="home-hero-title">푸들푸들</h2>
         <p className="home-hero-sub">한글 자모로 맞히는 오늘의 단어</p>
-        {showStreak && (
-          <p className="home-hero-streak">
-            <span className="streak-fire tiny" aria-hidden>
-              🔥
-            </span>
-            {nick} · {streak}연승
-          </p>
-        )}
       </div>
 
       <section className="mode-panel">
@@ -46,6 +39,7 @@ export function ModeSelect({
             {formatHomeDate()} · 오늘 한 문제
             <span className="mode-panel-extra"> · 날짜마다 같은 정답</span>
           </p>
+          <p className="mode-xp-hint">맞춤 시 XP 보너스 ↑</p>
         </div>
         <div className="mode-diff-row">
           <button

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import type { Difficulty } from '../data/words'
 import { DIFFICULTY_META } from '../data/words'
 import {
-  formatRecordDate,
   isSharedHistoryEnabled,
   loadRanking,
   type RankEntry,
@@ -16,19 +15,10 @@ type Props = {
   onOpenHistory?: () => void
 }
 
-const MODE_META: Record<RankMode, { label: string; sub: string }> = {
-  wins: {
-    label: '승수',
-    sub: '같은 이름으로 성공할 때마다 승수가 쌓여요',
-  },
-  fastest: {
-    label: '최단 시간',
-    sub: '성공한 판 중 가장 빠른 기록을 겨뤄요',
-  },
-  attempts: {
-    label: '최소 시도',
-    sub: '성공한 판 중 가장 적은 시도 횟수를 겨뤄요',
-  },
+const MODE_LABEL: Record<RankMode, string> = {
+  wins: '승수',
+  fastest: '최단시간',
+  attempts: '최단시도',
 }
 
 export function RankingModal({
@@ -93,109 +83,86 @@ export function RankingModal({
         aria-labelledby="rank-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="rank-title">랭킹</h2>
-        <p className="modal-sub">{MODE_META[mode].sub}</p>
+        <h2 id="rank-title">푸들푸들 이번주 단어킹</h2>
 
-        <div className="rank-tabs" role="tablist" aria-label="난이도">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'easy'}
-            className={tab === 'easy' ? 'on' : ''}
-            onClick={() => setTab('easy')}
-          >
-            쉬움
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'hard'}
-            className={tab === 'hard' ? 'on' : ''}
-            onClick={() => setTab('hard')}
-          >
-            어려움
-          </button>
-        </div>
-
-        <div className="rank-mode-tabs" role="tablist" aria-label="랭킹 종류">
-          {(Object.keys(MODE_META) as RankMode[]).map((m) => (
+        <div className="rank-filters">
+          <div className="rank-tabs" role="tablist" aria-label="난이도">
             <button
-              key={m}
               type="button"
               role="tab"
-              aria-selected={mode === m}
-              className={mode === m ? 'on' : ''}
-              onClick={() => setMode(m)}
+              aria-selected={tab === 'easy'}
+              className={tab === 'easy' ? 'on' : ''}
+              onClick={() => setTab('easy')}
             >
-              {MODE_META[m].label}
+              쉬움
             </button>
-          ))}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'hard'}
+              className={tab === 'hard' ? 'on' : ''}
+              onClick={() => setTab('hard')}
+            >
+              어려움
+            </button>
+          </div>
+          <div className="rank-mode-tabs" role="tablist" aria-label="기준">
+            {(Object.keys(MODE_LABEL) as RankMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                className={mode === m ? 'on' : ''}
+                onClick={() => setMode(m)}
+              >
+                {MODE_LABEL[m]}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {loading ? (
-          <p className="history-empty">불러오는 중...</p>
-        ) : error ? (
-          <p className="history-empty">{error}</p>
-        ) : ranking.length === 0 ? (
-          <p className="history-empty">
-            아직 {DIFFICULTY_META[tab].label} 성공 기록이 없어요
-          </p>
-        ) : (
-          <ol className="rank-list">
-            {ranking.map((r, i) => {
-              const place = i + 1
-              return (
-                <li
-                  key={`${tab}-${mode}-${r.name}`}
-                  className={`rank-item${place === 1 ? ' rank-first' : ''}`}
-                >
-                  <span
-                    className={`rank-num place-${Math.min(place, 4)}`}
-                    aria-label={`${place}위`}
+        <div className="rank-body">
+          {loading ? (
+            <p className="history-empty">불러오는 중...</p>
+          ) : error ? (
+            <p className="history-empty">{error}</p>
+          ) : ranking.length === 0 ? (
+            <p className="history-empty">
+              아직 {DIFFICULTY_META[tab].label} 기록이 없어요
+            </p>
+          ) : (
+            <ol className="rank-list">
+              {ranking.map((r) => {
+                const place = r.rank
+                return (
+                  <li
+                    key={`${tab}-${mode}-${r.name}`}
+                    className={`rank-item${place <= 3 ? ` top-${place}` : ''}`}
                   >
-                    {place}
-                  </span>
-                  <div className="rank-body">
-                    <div className="rank-row">
-                      <div className="rank-name-block">
-                        <strong>{r.name}</strong>
-                        {place === 1 && mode === 'wins' && (
-                          <span className="rank-king-title">
-                            푸들푸들 오늘의 단어 킹
-                          </span>
-                        )}
-                        {place === 1 && mode === 'fastest' && (
-                          <span className="rank-king-title">스피드 킹</span>
-                        )}
-                        {place === 1 && mode === 'attempts' && (
-                          <span className="rank-king-title">효율 킹</span>
-                        )}
-                      </div>
-                      <span className="rank-wins">{r.scoreLabel}</span>
-                    </div>
-                    {r.lastSavedAt > 0 && (
-                      <span className="rank-date">
-                        {mode === 'wins'
-                          ? `최근 ${formatRecordDate(r.lastSavedAt)}`
-                          : `${r.wins}승 · 최근 ${formatRecordDate(r.lastSavedAt)}`}
-                      </span>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ol>
-        )}
+                    <span className="rank-num" aria-label={`${place}위`}>
+                      {place}
+                    </span>
+                    <strong className="rank-name">{r.name}</strong>
+                    <span className="rank-wins">{r.scoreLabel}</span>
+                  </li>
+                )
+              })}
+            </ol>
+          )}
+        </div>
 
         <div className="rank-footer">
           {onOpenHistory && (
-            <button
-              type="button"
-              className="cta cta-secondary full"
-              onClick={onOpenHistory}
-            >
-              전체 기록보기
-            </button>
+            <div className="rank-footer-links">
+              <button
+                type="button"
+                className="rank-history-link is-on"
+                onClick={onOpenHistory}
+              >
+                기록 보기
+              </button>
+            </div>
           )}
           <button type="button" className="btn-primary full" onClick={onClose}>
             닫기

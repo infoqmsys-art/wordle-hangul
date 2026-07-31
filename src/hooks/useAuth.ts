@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
+  applyProgressToProfile,
   authErrorMessage,
   isAuthEnabled,
   signInWithNickname,
@@ -9,12 +10,18 @@ import {
   updateNickname,
   type UserProfile,
 } from '../lib/auth'
+import { buyShopItem, consumeHint, syncEconomy } from '../lib/economy'
+import { claimWeekReward, type UserProgress } from '../lib/progress'
 
 export function useAuth() {
   const [user, setUser] = useState<UserProfile | null>(null)
   const [ready, setReady] = useState(!isAuthEnabled())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const patchProgress = useCallback((progress: UserProgress) => {
+    setUser((prev) => (prev ? applyProgressToProfile(prev, progress) : prev))
+  }, [])
 
   useEffect(() => {
     if (!isAuthEnabled()) {
@@ -102,6 +109,71 @@ export function useAuth() {
     }
   }, [])
 
+  const claimReward = useCallback(async () => {
+    if (!user) return null
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await claimWeekReward(user.uid, user.nickname)
+      if (!result) {
+        setError('받을 보상이 없어요')
+        return null
+      }
+      setUser(applyProgressToProfile(user, result.progress))
+      return result
+    } catch {
+      setError('보상 수령에 실패했어요')
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }, [user])
+
+  const refreshEconomy = useCallback(async () => {
+    if (!user) return
+    try {
+      const { progress } = await syncEconomy(user.uid, user.nickname)
+      setUser((prev) => (prev ? applyProgressToProfile(prev, progress) : prev))
+    } catch {
+      /* offline */
+    }
+  }, [user])
+
+  const buyItem = useCallback(
+    async (itemId: string) => {
+      if (!user) return false
+      setBusy(true)
+      setError(null)
+      try {
+        const progress = await buyShopItem(user.uid, user.nickname, itemId)
+        setUser(applyProgressToProfile(user, progress))
+        return true
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '구매에 실패했어요')
+        return false
+      } finally {
+        setBusy(false)
+      }
+    },
+    [user],
+  )
+
+  const useHint = useCallback(async () => {
+    if (!user) return null
+    setBusy(true)
+    setError(null)
+    try {
+      const progress = await consumeHint(user.uid, user.nickname)
+      setUser(applyProgressToProfile(user, progress))
+      return progress
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '힌트 사용에 실패했어요')
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }, [user])
+
   return {
     user,
     ready,
@@ -112,6 +184,11 @@ export function useAuth() {
     signUp,
     rename,
     signOut,
+    claimReward,
+    patchProgress,
+    refreshEconomy,
+    buyItem,
+    useHint,
     isLoggedIn: Boolean(user),
     enabled: isAuthEnabled(),
   }

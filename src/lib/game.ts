@@ -1,4 +1,10 @@
-export type TileStatus = 'correct' | 'present' | 'absent' | 'empty' | 'tbd'
+export type TileStatus =
+  | 'correct'
+  | 'present'
+  | 'absent'
+  | 'empty'
+  | 'tbd'
+  | 'hint'
 
 export type KeyStatus = 'correct' | 'present' | 'absent' | 'unused'
 
@@ -35,6 +41,9 @@ const STATUS_RANK: Record<KeyStatus, number> = {
 
 export function mergeKeyStatus(prev: KeyStatus, next: TileStatus): KeyStatus {
   if (next === 'empty' || next === 'tbd') return prev
+  if (next === 'hint') {
+    return STATUS_RANK.correct > STATUS_RANK[prev] ? 'correct' : prev
+  }
   const candidate = next as KeyStatus
   return STATUS_RANK[candidate] > STATUS_RANK[prev] ? candidate : prev
 }

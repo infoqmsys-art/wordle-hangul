@@ -1,12 +1,20 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { UserProfile } from '../lib/auth'
 import { formatSeconds, getLastName } from '../lib/history'
+import {
+  getHold,
+  holdXpBarColor,
+  isRewardClaimable,
+  isRewardExpired,
+  progressFromXp,
+} from '../lib/levels'
 import {
   avgWinAttempts,
   getPersonalStats,
   winRate,
   type PersonalStats,
 } from '../lib/stats'
+import { HoldBadge, HoldTrail } from './HoldBadge'
 
 type AuthMode = 'login' | 'signup'
 
@@ -21,6 +29,7 @@ type Props = {
   onSignUp: (nickname: string, password: string) => Promise<UserProfile | null>
   onSignOut: () => void
   onUpdateNickname: (nickname: string) => Promise<boolean>
+  onClaimReward?: () => Promise<{ gained: number } | null>
 }
 
 export function ProfileModal({
@@ -34,6 +43,7 @@ export function ProfileModal({
   onSignUp,
   onSignOut,
   onUpdateNickname,
+  onClaimReward,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(profile?.nickname ?? '')
@@ -42,6 +52,7 @@ export function ProfileModal({
   const [authMode, setAuthMode] = useState<AuthMode>('login')
   const [nickname, setNickname] = useState('')
   const [password, setPassword] = useState('')
+  const [claimMsg, setClaimMsg] = useState<string | null>(null)
   const ignoreCloseUntil = useRef(0)
   const backdropPress = useRef(false)
 
@@ -57,13 +68,17 @@ export function ProfileModal({
     setAuthMode('login')
     setNickname(getLastName().trim())
     setPassword('')
+    setClaimMsg(null)
     ignoreCloseUntil.current = Date.now() + 800
   }, [open, profile])
 
   if (!open) return null
 
   const avgAttempts = avgWinAttempts(stats)
-  const initial = (profile?.nickname ?? '?').trim().slice(0, 1) || '?'
+  const levelView = profile ? progressFromXp(profile.xp) : null
+  const pending = profile?.pendingWeekReward ?? null
+  const canClaim = isRewardClaimable(pending)
+  const rewardExpired = isRewardExpired(pending)
 
   const tryCloseFromBackdrop = () => {
     if (Date.now() < ignoreCloseUntil.current) return
@@ -145,9 +160,7 @@ export function ProfileModal({
         {profile ? (
           <>
             <div className="profile-hero">
-              <span className="profile-avatar is-fallback" aria-hidden>
-                {initial}
-              </span>
+              <HoldBadge level={profile.level} size="lg" />
               <div className="profile-hero-text">
                 <p className="profile-label">내 닉네임</p>
                 {editing ? (
@@ -202,10 +215,6 @@ export function ProfileModal({
                     >
                       이름 바꾸기
                     </button>
-                    <p className="profile-rename-note">
-                      이미 쓰인 닉네임은 안 되고, 바꿔도 통계·랭킹 기록은 그대로
-                      따라가요.
-                    </p>
                   </>
                 )}
                 {(localError || error) && (
@@ -213,6 +222,82 @@ export function ProfileModal({
                 )}
               </div>
             </div>
+
+            {levelView && (
+              <div className="profile-level" aria-label="레벨">
+                <div className="profile-level-head">
+                  <strong>
+                    Lv.{levelView.level} {levelView.hold.name}
+                  </strong>
+                  <span>
+                    {levelView.xpForNext == null
+                      ? `${levelView.totalXp.toLocaleString('ko-KR')} XP`
+                      : `${levelView.xpIntoLevel} / ${levelView.xpForNext} XP`}
+                  </span>
+                </div>
+                <div
+                  className="xp-bar"
+                  style={
+                    {
+                      '--xp-color': holdXpBarColor(levelView.level),
+                    } as CSSProperties
+                  }
+                >
+                  <div
+                    className="xp-bar-fill"
+                    style={{
+                      width: `${
+                        levelView.xpForNext == null
+                          ? 100
+                          : Math.min(
+                              100,
+                              (levelView.xpIntoLevel / levelView.xpForNext) *
+                                100,
+                            )
+                      }%`,
+                    }}
+                  />
+                </div>
+                <p className="profile-level-next">
+                  {levelView.xpForNext == null
+                    ? '최고 홀드 · XP는 계속 쌓여요'
+                    : `다음: Lv.${levelView.level + 1} ${getHold(levelView.level + 1).name}`}
+                </p>
+                <HoldTrail currentLevel={levelView.level} />
+              </div>
+            )}
+
+            {pending && (
+              <div
+                className={`week-reward-card${canClaim ? ' is-ready' : ''}${
+                  pending.claimed ? ' is-claimed' : ''
+                }${rewardExpired ? ' is-expired' : ''}`}
+              >
+                <div>
+                  <strong>지난주 {pending.rank}위</strong>
+                  <span>+{pending.xp} XP</span>
+                </div>
+                {canClaim && onClaimReward ? (
+                  <button
+                    type="button"
+                    className="pill-btn challenge"
+                    disabled={busy}
+                    onClick={() => {
+                      void onClaimReward().then((r) => {
+                        if (r) setClaimMsg(`+${r.gained} XP 받았어요`)
+                      })
+                    }}
+                  >
+                    {busy ? '받는 중...' : '받기'}
+                  </button>
+                ) : pending.claimed ? (
+                  <span className="week-reward-state">받음</span>
+                ) : rewardExpired ? (
+                  <span className="week-reward-state">만료</span>
+                ) : null}
+                {claimMsg && <p className="week-reward-msg">{claimMsg}</p>}
+              </div>
+            )}
 
             <div className="profile-stats" aria-label="내 통계">
               <div>

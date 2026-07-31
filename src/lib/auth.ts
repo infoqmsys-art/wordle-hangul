@@ -15,6 +15,13 @@ import {
 } from 'firebase/firestore'
 import { getLastName, renameUserRecords, setLastName } from './history'
 import { getFirebaseAuth, getDb, isFirebaseConfigured } from './firebase'
+import type { PendingWeekReward } from './levels'
+import { syncEconomy } from './economy'
+import {
+  emptyProgress,
+  parseUserProgress,
+  type UserProgress,
+} from './progress'
 import {
   getPersonalStats,
   setPersonalStats,
@@ -26,7 +33,38 @@ export type UserProfile = {
   nickname: string
   email: string | null
   photoURL: string | null
+  xp: number
+  level: number
+  weekKey: string
+  weekXp: number
+  weekWins: number
+  lastDailyBonusDate: string
+  pendingWeekReward: PendingWeekReward | null
+  hints: number
+  tokens: number
+  lastDailyHintDate: string
+  economyVersion: number
 } & PersonalStats
+
+export function getActiveUid(): string | null {
+  return activeUid
+}
+
+function progressFields(p: UserProgress) {
+  return {
+    xp: p.xp,
+    level: p.level,
+    weekKey: p.weekKey,
+    weekXp: p.weekXp,
+    weekWins: p.weekWins,
+    lastDailyBonusDate: p.lastDailyBonusDate,
+    pendingWeekReward: p.pendingWeekReward,
+    hints: p.hints,
+    tokens: p.tokens,
+    lastDailyHintDate: p.lastDailyHintDate,
+    economyVersion: p.economyVersion,
+  }
+}
 
 /** Firebase Email/Password용 내부 주소 (화면에 안 보임) */
 const AUTH_EMAIL_DOMAIN = 'auth.wordle-hangul.web.app'
@@ -129,14 +167,22 @@ function mergeStats(local: PersonalStats, cloud: PersonalStats): PersonalStats {
 
 async function readCloudProfile(
   uid: string,
-): Promise<{ nickname: string; stats: PersonalStats } | null> {
+): Promise<{
+  nickname: string
+  stats: PersonalStats
+  progress: UserProgress
+} | null> {
   try {
     const snap = await getDoc(doc(getDb(), USERS, uid))
     if (!snap.exists()) return null
     const data = snap.data() as Record<string, unknown>
     const nickname = String(data.nickname ?? '').trim()
     if (!nickname) return null
-    return { nickname: nickname.slice(0, 20), stats: parseCloudStats(data) }
+    return {
+      nickname: nickname.slice(0, 20),
+      stats: parseCloudStats(data),
+      progress: parseUserProgress(data),
+    }
   } catch {
     return null
   }
@@ -146,6 +192,7 @@ function toProfile(
   user: User,
   nickname: string,
   stats: PersonalStats,
+  progress: UserProgress = emptyProgress(),
 ): UserProfile {
   return {
     uid: user.uid,
@@ -153,6 +200,7 @@ function toProfile(
     email: null,
     photoURL: user.photoURL,
     ...stats,
+    ...progressFields(progress),
   }
 }
 
@@ -179,6 +227,7 @@ async function saveProfileWithUniqueNickname(input: {
   nickname: string
   previousNickname?: string
   stats: PersonalStats
+  progress?: UserProgress
   email: string | null
   photoURL: string | null
 }): Promise<string> {
@@ -218,6 +267,7 @@ async function saveProfileWithUniqueNickname(input: {
         email: input.email,
         photoURL: input.photoURL,
         ...input.stats,
+        ...(input.progress ? progressFields(input.progress) : {}),
         updatedAt: serverTimestamp(),
       },
       { merge: true },
@@ -243,12 +293,22 @@ export async function resumeExistingProfile(
   setLastName(cloud.nickname)
   setPersonalStats(stats)
 
+  activeUid = user.uid
+
+  let progress = cloud.progress
+  try {
+    progress = (await syncEconomy(user.uid, cloud.nickname)).progress
+  } catch {
+    /* offline */
+  }
+
   try {
     await saveProfileWithUniqueNickname({
       uid: user.uid,
       nickname: cloud.nickname,
       previousNickname: cloud.nickname,
       stats,
+      progress,
       email: user.email,
       photoURL: user.photoURL,
     })
@@ -256,8 +316,7 @@ export async function resumeExistingProfile(
     /* keep local profile if nickname registry fails */
   }
 
-  activeUid = user.uid
-  return toProfile(user, cloud.nickname, stats)
+  return toProfile(user, cloud.nickname, stats, progress)
 }
 
 async function completeNicknameSetup(
@@ -265,10 +324,12 @@ async function completeNicknameSetup(
   rawName: string,
 ): Promise<UserProfile> {
   const local = getPersonalStats()
+  const progress = emptyProgress()
   const nickname = await saveProfileWithUniqueNickname({
     uid: user.uid,
     nickname: rawName,
     stats: local,
+    progress,
     email: user.email,
     photoURL: user.photoURL,
   })
@@ -276,7 +337,7 @@ async function completeNicknameSetup(
   setLastName(nickname)
   setPersonalStats(local)
   activeUid = user.uid
-  return toProfile(user, nickname, local)
+  return toProfile(user, nickname, local, progress)
 }
 
 /** 닉네임 + 비밀번호로 회원가입 (인앱 브라우저에서도 동작) */
@@ -351,12 +412,26 @@ export async function updateNickname(
     currentStreak: current.currentStreak,
     maxStreak: current.maxStreak,
   }
+  const progress: UserProgress = {
+    xp: current.xp,
+    level: current.level,
+    weekKey: current.weekKey,
+    weekXp: current.weekXp,
+    weekWins: current.weekWins,
+    lastDailyBonusDate: current.lastDailyBonusDate,
+    pendingWeekReward: current.pendingWeekReward,
+    hints: current.hints,
+    tokens: current.tokens,
+    lastDailyHintDate: current.lastDailyHintDate,
+    economyVersion: current.economyVersion,
+  }
 
   const nickname = await saveProfileWithUniqueNickname({
     uid,
     nickname: rawName,
     previousNickname: current.nickname,
     stats,
+    progress,
     email: current.email,
     photoURL: current.photoURL,
   })
@@ -371,6 +446,16 @@ export async function updateNickname(
   return {
     ...current,
     nickname,
+  }
+}
+
+export function applyProgressToProfile(
+  profile: UserProfile,
+  progress: UserProgress,
+): UserProfile {
+  return {
+    ...profile,
+    ...progressFields(progress),
   }
 }
 

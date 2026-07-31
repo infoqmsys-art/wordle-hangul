@@ -2,17 +2,29 @@ import { useEffect, useRef, useState } from 'react'
 import { Board } from './components/Board'
 import { Confetti } from './components/Confetti'
 import { HistoryModal } from './components/HistoryModal'
+import { HoldBadge } from './components/HoldBadge'
+import { HomeDashboard } from './components/HomeDashboard'
 import { HowTo } from './components/HowTo'
 import { Keyboard } from './components/Keyboard'
 import { ModeSelect } from './components/ModeSelect'
 import { ProfileModal } from './components/ProfileModal'
 import { RankingModal } from './components/RankingModal'
+import { ShopModal } from './components/ShopModal'
 import { DIFFICULTY_META } from './data/words'
 import { useAuth } from './hooks/useAuth'
 import { useGame, MAX_ATTEMPTS } from './hooks/useGame'
 import { formatSeconds, getLastName, saveHistoryRecord } from './lib/history'
 import { shareChallenge } from './lib/challenge'
+import { getHold } from './lib/levels'
+import { awardMatchXp } from './lib/progress'
 import './App.css'
+
+type XpFlash = {
+  gained: number
+  tokensGained: number
+  leveledUp: boolean
+  newLevel: number
+}
 
 function App() {
   const game = useGame()
@@ -22,6 +34,17 @@ function App() {
   const [rankingOpen, setRankingOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [modePickerOpen, setModePickerOpen] = useState(false)
+  const [shopOpen, setShopOpen] = useState(false)
+  const [xpFlash, setXpFlash] = useState<XpFlash | null>(null)
+  const [hintBusy, setHintBusy] = useState(false)
+  const [hintPickMode, setHintPickMode] = useState(false)
+  const [hintConfirm, setHintConfirm] = useState<{
+    row: number
+    col: number
+  } | null>(null)
+  const prevGameStatus = useRef(game.status)
+  const patchProgress = auth.patchProgress
 
   useEffect(() => {
     const seen = localStorage.getItem('wordle-hangul-howto')
@@ -37,10 +60,68 @@ function App() {
     refreshStreak()
   }, [auth.ready, auth.user, refreshStreak])
 
+  useEffect(() => {
+    if (game.status !== 'playing') {
+      setHintPickMode(false)
+      setHintConfirm(null)
+    }
+  }, [game.status])
+
+  useEffect(() => {
+    const prev = prevGameStatus.current
+    prevGameStatus.current = game.status
+    if (game.status === 'playing') {
+      setXpFlash(null)
+      return
+    }
+    // 세션 복원이 아니라, 플레이 중 → 종료로 바뀐 순간에만 XP (지금부터)
+    if (prev !== 'playing') return
+    if (!auth.user || !game.difficulty || !game.playMode) return
+
+    let cancelled = false
+    awardMatchXp({
+      uid: auth.user.uid,
+      nickname: auth.user.nickname,
+      won: game.status === 'won',
+      attempts: game.rows.length,
+      difficulty: game.difficulty,
+      playMode: game.playMode,
+      streakAfter: game.currentStreak,
+    })
+      .then((result) => {
+        if (cancelled || !result) return
+        patchProgress(result.progress)
+        setXpFlash({
+          gained: result.gained,
+          tokensGained: result.tokensGained,
+          leveledUp: result.leveledUp,
+          newLevel: result.newLevel,
+        })
+      })
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    auth.user,
+    patchProgress,
+    game.status,
+    game.difficulty,
+    game.playMode,
+    game.rows.length,
+    game.currentStreak,
+  ])
+
   const autoSaveKey = useRef<string | null>(null)
   useEffect(() => {
     if (game.status === 'playing' || game.recordSaved || !game.difficulty) {
       if (game.status === 'playing') autoSaveKey.current = null
+      return
+    }
+    // 오늘의 단어는 정답 스포일러라 공유 기록에 남기지 않음
+    if (game.playMode === 'daily') {
+      game.markRecordSaved()
       return
     }
     const nick = (auth.user?.nickname?.trim() || getLastName().trim()).slice(
@@ -63,6 +144,7 @@ function App() {
       dateKey: game.dateKey,
       difficulty: game.difficulty,
       wordLength: game.wordLength,
+      playMode: 'practice',
       uid: auth.user?.uid,
     })
       .then(() => {
@@ -79,6 +161,7 @@ function App() {
     game.status,
     game.recordSaved,
     game.difficulty,
+    game.playMode,
     game.answerWord,
     game.dateKey,
     game.seconds,
@@ -160,6 +243,7 @@ function App() {
         setProfileOpen(false)
       }}
       onUpdateNickname={auth.rename}
+      onClaimReward={auth.claimReward}
     />
   )
 
@@ -167,21 +251,28 @@ function App() {
     <button
       type="button"
       className="header-auth is-user"
-      aria-label={`${auth.user.nickname} · 내 정보`}
+      aria-label={`${auth.user.nickname} · Lv.${auth.user.level} · 내 정보`}
       onClick={openProfile}
     >
-      {auth.user.photoURL ? (
-        <img
-          className="header-auth-avatar"
-          src={auth.user.photoURL}
-          alt=""
-          referrerPolicy="no-referrer"
+      <span className="header-auth-chip">
+        {auth.user.photoURL ? (
+          <img
+            className="header-auth-avatar"
+            src={auth.user.photoURL}
+            alt=""
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <span className="header-auth-avatar is-fallback" aria-hidden>
+            {auth.user.nickname.trim().slice(0, 1) || '?'}
+          </span>
+        )}
+        <HoldBadge
+          level={auth.user.level}
+          size="sm"
+          className="header-hold"
         />
-      ) : (
-        <span className="header-auth-avatar is-fallback" aria-hidden>
-          {auth.user.nickname.trim().slice(0, 1) || '?'}
-        </span>
-      )}
+      </span>
     </button>
   ) : (
     <button
@@ -217,6 +308,7 @@ function App() {
                 type="button"
                 onClick={() => {
                   game.changeMode()
+                  setModePickerOpen(false)
                   setMenuOpen(false)
                 }}
               >
@@ -241,17 +333,59 @@ function App() {
               >
                 게임 방법
               </button>
+              {auth.user && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShopOpen(true)
+                    setMenuOpen(false)
+                  }}
+                >
+                  상점
+                </button>
+              )}
             </div>
           )}
         </header>
-        <ModeSelect
-          open
-          onSelect={game.startGame}
-          nickname={auth.user?.nickname}
-          streak={game.currentStreak}
-        />
+        {modePickerOpen ? (
+          <ModeSelect
+            open
+            onBack={() => setModePickerOpen(false)}
+            onSelect={(mode, difficulty) => {
+              setModePickerOpen(false)
+              game.startGame(mode, difficulty)
+            }}
+          />
+        ) : (
+          <>
+            <HomeDashboard
+              profile={auth.user}
+              streak={game.currentStreak}
+              onOpenProfile={openProfile}
+              onOpenRanking={() => setRankingOpen(true)}
+              onOpenShop={
+                auth.user
+                  ? () => {
+                      setShopOpen(true)
+                    }
+                  : undefined
+              }
+              onClaimReward={auth.user ? auth.claimReward : undefined}
+              claimBusy={auth.busy}
+            />
+            <div className="home-start-bar">
+              <button
+                type="button"
+                className="cta home-start-btn"
+                onClick={() => setModePickerOpen(true)}
+              >
+                게임시작
+              </button>
+            </div>
+          </>
+        )}
         {game.toast && <div className="toast">{game.toast}</div>}
-        {auth.error && !profileOpen && (
+        {auth.error && !profileOpen && !shopOpen && (
           <div className="toast">{auth.error}</div>
         )}
         <HowTo
@@ -270,9 +404,62 @@ function App() {
             setHistoryOpen(true)
           }}
         />
+        {auth.user && (
+          <ShopModal
+            open={shopOpen}
+            onClose={() => {
+              setShopOpen(false)
+              auth.clearError()
+            }}
+            hints={auth.user.hints}
+            tokens={auth.user.tokens}
+            lastDailyHintDate={auth.user.lastDailyHintDate}
+            busy={auth.busy}
+            error={auth.error}
+            onBuy={auth.buyItem}
+            onRefresh={auth.refreshEconomy}
+          />
+        )}
         {profileModal}
       </div>
     )
+  }
+
+  const startHintPick = () => {
+    if (!auth.user || hintBusy || game.status !== 'playing') return
+    if (hintPickMode) {
+      setHintPickMode(false)
+      setHintConfirm(null)
+      return
+    }
+    if (game.hintCandidatesLeft() <= 0) {
+      return
+    }
+    if (auth.user.hints < 1) {
+      setShopOpen(true)
+      return
+    }
+    setHintConfirm(null)
+    setHintPickMode(true)
+  }
+
+  const confirmHintUse = async () => {
+    if (!auth.user || !hintConfirm || hintBusy) return
+    const { row, col } = hintConfirm
+    if (!game.canHintAt(row, col)) {
+      setHintConfirm(null)
+      return
+    }
+    setHintBusy(true)
+    try {
+      const progress = await auth.useHint()
+      if (!progress) return
+      game.applyHintAt(row, col)
+      setHintPickMode(false)
+      setHintConfirm(null)
+    } finally {
+      setHintBusy(false)
+    }
   }
 
   return (
@@ -307,6 +494,7 @@ function App() {
               type="button"
               onClick={() => {
                 game.changeMode()
+                setModePickerOpen(false)
                 setMenuOpen(false)
               }}
             >
@@ -322,15 +510,26 @@ function App() {
             >
               랭킹
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setHowto(true)
-                setMenuOpen(false)
-              }}
-            >
-              게임 방법
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setHowto(true)
+                  setMenuOpen(false)
+                }}
+              >
+                게임 방법
+              </button>
+              {auth.user && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShopOpen(true)
+                    setMenuOpen(false)
+                  }}
+                >
+                  상점
+                </button>
+              )}
             {finished && (
               <button
                 type="button"
@@ -354,6 +553,13 @@ function App() {
           revealingRow={game.revealingRow}
           wordLength={game.wordLength}
           bounce={game.celebrate}
+          hintGrid={game.hintGrid}
+          pickMode={hintPickMode && !finished}
+          canHintAt={game.canHintAt}
+          onPickCell={(row, col) => {
+            if (!game.canHintAt(row, col)) return
+            setHintConfirm({ row, col })
+          }}
         />
 
         <div className="hint-bar">
@@ -367,7 +573,6 @@ function App() {
           >
             {game.startedAt ? formatSeconds(game.seconds) : '0초'}
           </span>
-          <span className="hint-pill soft">자모 {game.wordLength}칸</span>
           {game.challengeMode && (
             <span className="hint-pill challenge-pill">친구 도전</span>
           )}
@@ -391,7 +596,54 @@ function App() {
               {game.currentStreak}연승
             </span>
           )}
+          {auth.user && !finished && (
+            <button
+              type="button"
+              className={`hint-pill hint-use-btn${hintPickMode ? ' is-on' : ''}`}
+              disabled={hintBusy || auth.busy || game.revealingRow !== null}
+              onClick={startHintPick}
+            >
+              {hintPickMode ? '취소' : `힌트 ${auth.user.hints}`}
+            </button>
+          )}
         </div>
+
+        {hintConfirm && (
+          <div
+            className="modal-backdrop hint-confirm-backdrop"
+            role="presentation"
+            onClick={() => setHintConfirm(null)}
+          >
+            <div
+              className="modal hint-confirm-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="hint-confirm-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 id="hint-confirm-title">힌트 사용</h2>
+              <p className="modal-sub">이 칸에 힌트를 쓸까요?</p>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={hintBusy}
+                  onClick={() => setHintConfirm(null)}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={hintBusy}
+                  onClick={() => void confirmHintUse()}
+                >
+                  {hintBusy ? '사용 중...' : '확인'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {finished ? (
           <>
@@ -428,6 +680,23 @@ function App() {
                   {game.currentStreak}연속 승리 중!
                 </p>
               )}
+              {xpFlash && (
+                <p
+                  className={`finish-xp${xpFlash.leveledUp ? ' is-levelup' : ''}`}
+                >
+                  +{xpFlash.gained} XP
+                  {xpFlash.tokensGained > 0 && (
+                    <> · +{xpFlash.tokensGained} 초크가루</>
+                  )}
+                  {xpFlash.leveledUp && (
+                    <>
+                      {' · '}
+                      <HoldBadge level={xpFlash.newLevel} size="sm" />
+                      Lv.{xpFlash.newLevel} {getHold(xpFlash.newLevel).name}
+                    </>
+                  )}
+                </p>
+              )}
               {game.definition && (
                 <p className="finish-def">{game.definition}</p>
               )}
@@ -437,25 +706,30 @@ function App() {
               <button
                 type="button"
                 className="cta cta-secondary"
-                onClick={() => game.changeMode()}
+                onClick={() => {
+                  setModePickerOpen(false)
+                  game.changeMode()
+                }}
               >
                 홈
               </button>
-              <button
-                type="button"
-                className="cta cta-secondary"
-                onClick={async () => {
-                  if (!game.difficulty) return
-                  const result = await shareChallenge({
-                    difficulty: game.difficulty,
-                    word: game.answerWord,
-                    fromName: auth.user?.nickname,
-                  })
-                  if (result === 'copied') alert('도전 링크가 복사되었어요!')
-                }}
-              >
-                도전 보내기
-              </button>
+              {game.playMode !== 'daily' && (
+                <button
+                  type="button"
+                  className="cta cta-secondary"
+                  onClick={async () => {
+                    if (!game.difficulty) return
+                    const result = await shareChallenge({
+                      difficulty: game.difficulty,
+                      word: game.answerWord,
+                      fromName: auth.user?.nickname,
+                    })
+                    if (result === 'copied') alert('도전 링크가 복사되었어요!')
+                  }}
+                >
+                  도전 보내기
+                </button>
+              )}
               <button
                 type="button"
                 className="cta finish-continue"
@@ -470,13 +744,17 @@ function App() {
             <Keyboard
               keyStatuses={game.keyStatuses}
               onKey={game.onKey}
-              disabled={game.revealingRow !== null}
+              disabled={
+                game.revealingRow !== null || hintPickMode || Boolean(hintConfirm)
+              }
             />
             <button
               type="button"
               className="cta"
               onClick={() => game.onKey('Enter')}
-              disabled={game.revealingRow !== null}
+              disabled={
+                game.revealingRow !== null || hintPickMode || Boolean(hintConfirm)
+              }
             >
               입력
             </button>
@@ -485,7 +763,7 @@ function App() {
       </main>
 
       {game.toast && <div className="toast">{game.toast}</div>}
-      {auth.error && !profileOpen && (
+      {auth.error && !profileOpen && !shopOpen && (
         <div className="toast">{auth.error}</div>
       )}
       <Confetti active={game.celebrate} streak={game.currentStreak} />
@@ -506,6 +784,22 @@ function App() {
           setHistoryOpen(true)
         }}
       />
+      {auth.user && (
+        <ShopModal
+          open={shopOpen}
+          onClose={() => {
+            setShopOpen(false)
+            auth.clearError()
+          }}
+          hints={auth.user.hints}
+          tokens={auth.user.tokens}
+          lastDailyHintDate={auth.user.lastDailyHintDate}
+          busy={auth.busy}
+          error={auth.error}
+          onBuy={auth.buyItem}
+          onRefresh={auth.refreshEconomy}
+        />
+      )}
       {profileModal}
     </div>
   )
