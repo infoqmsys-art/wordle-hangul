@@ -68,7 +68,7 @@ export function ShopModal({
 
         <div className="shop-balance">
           <div>
-            <span>힌트</span>
+            <span>보유힌트</span>
             <strong>{hints}</strong>
           </div>
           <div>

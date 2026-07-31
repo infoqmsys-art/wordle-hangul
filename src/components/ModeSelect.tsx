@@ -18,16 +18,6 @@ export function ModeSelect({ open, onSelect, onBack }: Props) {
   return (
     <div className="diff-screen mode-picker">
       <div className="home-hero">
-        {onBack && (
-          <button
-            type="button"
-            className="mode-back"
-            onClick={onBack}
-            aria-label="홈으로"
-          >
-            ← 홈
-          </button>
-        )}
         <h2 className="home-hero-title">푸들푸들</h2>
         <p className="home-hero-sub">한글 자모로 맞히는 오늘의 단어</p>
       </div>
@@ -85,6 +75,16 @@ export function ModeSelect({ open, onSelect, onBack }: Props) {
           </button>
         </div>
       </section>
+
+      {onBack && (
+        <button
+          type="button"
+          className="cta cta-secondary mode-home-btn"
+          onClick={onBack}
+        >
+          홈
+        </button>
+      )}
     </div>
   )
 }

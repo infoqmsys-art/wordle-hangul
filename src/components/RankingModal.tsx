@@ -32,11 +32,13 @@ export function RankingModal({
   const [ranking, setRanking] = useState<RankEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setTab(initialDifficulty)
     setMode('wins')
+    setHelpOpen(false)
   }, [open, initialDifficulty])
 
   useEffect(() => {
@@ -83,7 +85,43 @@ export function RankingModal({
         aria-labelledby="rank-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="rank-title">푸들푸들 이번주 단어킹</h2>
+        <div className="rank-title-row">
+          <h2 id="rank-title">푸들푸들 이번주 단어킹</h2>
+          <button
+            type="button"
+            className="rank-help-btn"
+            aria-label="랭킹·보상 안내"
+            aria-expanded={helpOpen}
+            onClick={() => setHelpOpen((v) => !v)}
+          >
+            ?
+          </button>
+        </div>
+
+        {helpOpen && (
+          <div className="rank-help-panel" role="note">
+            <p>
+              <strong>단어킹</strong>은 쉬움·어려움별 승수 / 최단시간 /
+              최단시도 순위예요. 같은 기록이면 같은 순위(공동)입니다.
+            </p>
+            <p>
+              <strong>주간 XP 보상</strong>은 로그인 유저만, 이번 주 모은 XP
+              순위로 매주 <strong>월요일 09:00</strong>에 정산해요.
+            </p>
+            <ul>
+              <li>1위 +300 XP</li>
+              <li>2위 +180 XP</li>
+              <li>3위 +100 XP</li>
+              <li>4~10위 +40 XP</li>
+              <li>그 외 참가 +15 XP</li>
+            </ul>
+            <p>
+              보상은 홈·내 정보에서 <strong>받기</strong>로 수령하고, 정산 후
+              <strong> 7일</strong>이 지나면 사라져요. 공동 순위면 보상도
+              같습니다.
+            </p>
+          </div>
+        )}
 
         <div className="rank-filters">
           <div className="rank-tabs" role="tablist" aria-label="난이도">

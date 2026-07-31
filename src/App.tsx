@@ -432,6 +432,9 @@ function App() {
       setHintConfirm(null)
       return
     }
+    if (game.hintUsedThisGame) {
+      return
+    }
     if (game.hintCandidatesLeft() <= 0) {
       return
     }
@@ -600,10 +603,19 @@ function App() {
             <button
               type="button"
               className={`hint-pill hint-use-btn${hintPickMode ? ' is-on' : ''}`}
-              disabled={hintBusy || auth.busy || game.revealingRow !== null}
+              disabled={
+                hintBusy ||
+                auth.busy ||
+                game.revealingRow !== null ||
+                game.hintUsedThisGame
+              }
               onClick={startHintPick}
             >
-              {hintPickMode ? '취소' : `힌트 ${auth.user.hints}`}
+              {hintPickMode
+                ? '취소'
+                : game.hintUsedThisGame
+                  ? '힌트 사용함'
+                  : `보유힌트 ${auth.user.hints}`}
             </button>
           )}
         </div>

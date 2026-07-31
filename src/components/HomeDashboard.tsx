@@ -141,7 +141,7 @@ export function HomeDashboard({
           </section>
           <section className="home-economy" aria-label="힌트와 초크가루">
             <div>
-              <span>힌트</span>
+              <span>보유힌트</span>
               <strong>{profile.hints}</strong>
             </div>
             <div>

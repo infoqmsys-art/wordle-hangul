@@ -1881,17 +1881,9 @@ button.tile {
   letter-spacing: -0.02em;
 }
 
-.mode-picker .mode-back {
-  align-self: flex-start;
-  margin: 0 0 4px;
-  border: none;
-  background: transparent;
-  padding: 4px 0;
-  font: inherit;
-  font-size: 0.88rem;
-  font-weight: 800;
-  color: #5b7cbc;
-  cursor: pointer;
+.mode-picker .mode-home-btn {
+  width: min(100%, 400px);
+  margin: 4px auto 0;
 }
 
 .mode-xp-hint {
@@ -2056,11 +2048,76 @@ button.tile {
   max-height: min(85svh, 560px);
 }
 
-.rank-modal h2 {
+.rank-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   margin-bottom: 12px;
   flex-shrink: 0;
+}
+
+.rank-modal h2 {
+  margin: 0;
   font-size: 1.15rem;
   line-height: 1.3;
+}
+
+.rank-help-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.rank-help-btn:hover,
+.rank-help-btn[aria-expanded='true'] {
+  border-color: var(--blue-border);
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.rank-help-panel {
+  flex-shrink: 0;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  border: 1.5px solid var(--border);
+  text-align: left;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.rank-help-panel p {
+  margin: 0 0 8px;
+}
+
+.rank-help-panel p:last-child {
+  margin-bottom: 0;
+}
+
+.rank-help-panel ul {
+  margin: 0 0 8px;
+  padding-left: 1.15em;
+}
+
+.rank-help-panel li {
+  margin: 2px 0;
+}
+
+.rank-help-panel strong {
+  font-weight: 800;
 }
 
 .rank-body {

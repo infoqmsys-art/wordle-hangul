@@ -402,10 +402,14 @@ export function useGame() {
     setStartedAt((prev) => prev ?? Date.now())
   }, [])
 
-  /** 힌트: 지금 풀고 있는 줄의 빈 칸만 */
+  /** 한 판에 힌트 1회만 */
+  const hintUsedThisGame = hintGrid.some((row) => row.some((ch) => Boolean(ch)))
+
+  /** 힌트: 지금 풀고 있는 줄 · 아직 안 쓴 판만 */
   const canHintAt = useCallback(
     (row: number, col: number): boolean => {
       if (!answerEntry || status !== 'playing') return false
+      if (hintGrid.some((r) => r.some((ch) => Boolean(ch)))) return false
       if (row !== rows.length) return false
       if (col < 0 || col >= answerEntry.jamo.length) return false
       if (hintGrid[row]?.[col]) return false
@@ -416,18 +420,23 @@ export function useGame() {
 
   const hintCandidatesLeft = useCallback((): number => {
     if (!answerEntry || status !== 'playing') return 0
+    if (hintGrid.some((r) => r.some((ch) => Boolean(ch)))) return 0
     let n = 0
     const row = rows.length
     for (let c = 0; c < answerEntry.jamo.length; c++) {
       if (canHintAt(row, c)) n += 1
     }
     return n
-  }, [answerEntry, status, rows.length, canHintAt])
+  }, [answerEntry, status, rows.length, hintGrid, canHintAt])
 
   /** 선택한 칸에 정답 자모 힌트 표시 */
   const applyHintAt = useCallback(
     (row: number, col: number): string | null => {
       if (!answerEntry || status !== 'playing') return null
+      if (hintGrid.some((r) => r.some((ch) => Boolean(ch)))) {
+        showToast('이 판에서는 힌트를 이미 썼어요')
+        return null
+      }
       if (!canHintAt(row, col)) {
         showToast('이 칸에는 힌트를 쓸 수 없어요')
         return null
@@ -451,7 +460,7 @@ export function useGame() {
       ensureTimer()
       return ch
     },
-    [answerEntry, status, canHintAt, showToast, ensureTimer],
+    [answerEntry, status, hintGrid, canHintAt, showToast, ensureTimer],
   )
 
   const finishGame = useCallback(
@@ -646,6 +655,7 @@ export function useGame() {
     currentStreak,
     challengeMode,
     hintGrid,
+    hintUsedThisGame,
     canHintAt,
     hintCandidatesLeft,
     applyHintAt,
