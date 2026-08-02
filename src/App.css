@@ -634,6 +634,14 @@ button.tile {
   text-align: left;
 }
 
+.finish-def-label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--blue);
+}
+
 .finish-actions {
   width: min(100%, 400px);
   margin: 0 auto;
@@ -1608,6 +1616,30 @@ button.tile {
   margin-top: 4px;
   font-size: 0.75rem;
   color: var(--muted);
+}
+
+.history-def-btn {
+  margin-top: 8px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--blue);
+  cursor: pointer;
+}
+
+.history-def {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #eee;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #444;
+  text-align: left;
 }
 
 .tag-win,

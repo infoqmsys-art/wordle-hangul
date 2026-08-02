@@ -14,12 +14,16 @@ const DAILY_OVERRIDES: Record<
 export type WordEntry = {
   word: string
   jamo: string[]
+  /** 표준국어대사전 뜻 (빌드 시 캐시된 경우) */
+  definition?: string
 }
 
 export type Dictionary = {
   guesses: Record<string, string>
   answers5: WordEntry[]
   answers7: WordEntry[]
+  /** 정답 단어 → 사전 뜻 */
+  definitions: Record<string, string>
   source: string
 }
 
@@ -44,18 +48,30 @@ export async function loadDictionary(): Promise<Dictionary> {
 
   loading = (async () => {
     const base = import.meta.env.BASE_URL
-    const [guessRes, a5Res, a7Res] = await Promise.all([
+    const [guessRes, a5Res, a7Res, defRes] = await Promise.all([
       fetch(`${base}dict/guesses.json`),
       fetch(`${base}dict/answers-5.json`),
       fetch(`${base}dict/answers-7.json`),
+      fetch(`${base}dict/definitions.json`),
     ])
     if (!guessRes.ok || !a5Res.ok || !a7Res.ok) {
       throw new Error('사전 데이터를 불러오지 못했어요')
     }
+    const answers5 = (await a5Res.json()) as WordEntry[]
+    const answers7 = (await a7Res.json()) as WordEntry[]
+    let definitions: Record<string, string> = {}
+    if (defRes.ok) {
+      definitions = (await defRes.json()) as Record<string, string>
+    } else {
+      for (const entry of [...answers5, ...answers7]) {
+        if (entry.definition) definitions[entry.word] = entry.definition
+      }
+    }
     cached = {
       guesses: (await guessRes.json()) as Record<string, string>,
-      answers5: (await a5Res.json()) as WordEntry[],
-      answers7: (await a7Res.json()) as WordEntry[],
+      answers5,
+      answers7,
+      definitions,
       source: '표준국어대사전 명사(COMMON) + 일상 친숙어',
     }
     return cached
@@ -84,6 +100,19 @@ export function findWordByJamo(
   jamo: string[],
 ): string | undefined {
   return dict.guesses[jamoKey(jamo)]
+}
+
+export function findDefinition(
+  dict: Dictionary | null | undefined,
+  word: string,
+): string | null {
+  if (!dict || !word) return null
+  const direct = dict.definitions[word]
+  if (direct) return direct
+  const fromAnswers = [...dict.answers5, ...dict.answers7].find(
+    (a) => a.word === word,
+  )?.definition
+  return fromAnswers ?? null
 }
 
 function shuffleWords(words: string[]): string[] {

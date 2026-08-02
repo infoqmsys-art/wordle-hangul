@@ -200,14 +200,49 @@ for (const entry of [
 }
 const answers7 = Object.values(answers7Map)
 
-fs.writeFileSync(path.join(outDir, 'guesses.json'), JSON.stringify(guesses), 'utf8')
-fs.writeFileSync(path.join(outDir, 'answers-5.json'), JSON.stringify(answers5), 'utf8')
-fs.writeFileSync(path.join(outDir, 'answers-7.json'), JSON.stringify(answers7), 'utf8')
-// 하위 호환
-fs.writeFileSync(path.join(outDir, 'answers.json'), JSON.stringify(answers5), 'utf8')
+/** 표준국어대사전 뜻 캐시 (scripts/fetch-definitions.mjs 로 채움) */
+const defCachePath = path.join(__dirname, 'data/definitions-cache.json')
+let defCache = {}
+try {
+  if (fs.existsSync(defCachePath)) {
+    defCache = JSON.parse(fs.readFileSync(defCachePath, 'utf8'))
+  }
+} catch {
+  defCache = {}
+}
 
+function withDefinitions(entries) {
+  return entries.map((entry) => {
+    const definition = defCache[entry.word]
+    if (typeof definition === 'string' && definition.trim()) {
+      return { ...entry, definition: definition.trim() }
+    }
+    return entry
+  })
+}
+
+const answers5Out = withDefinitions(answers5)
+const answers7Out = withDefinitions(answers7)
+const definitions = {}
+for (const entry of [...answers5Out, ...answers7Out]) {
+  if (entry.definition) definitions[entry.word] = entry.definition
+}
+
+fs.writeFileSync(path.join(outDir, 'guesses.json'), JSON.stringify(guesses), 'utf8')
+fs.writeFileSync(path.join(outDir, 'answers-5.json'), JSON.stringify(answers5Out), 'utf8')
+fs.writeFileSync(path.join(outDir, 'answers-7.json'), JSON.stringify(answers7Out), 'utf8')
+fs.writeFileSync(
+  path.join(outDir, 'definitions.json'),
+  JSON.stringify(definitions),
+  'utf8',
+)
+// 하위 호환
+fs.writeFileSync(path.join(outDir, 'answers.json'), JSON.stringify(answers5Out), 'utf8')
+
+const defCount = Object.keys(definitions).length
 console.log(`guesses: ${Object.keys(guesses).length}`)
-console.log(`answers-5: ${answers5.length}`)
-console.log(`answers-7: ${answers7.length}`)
-console.log(`sample5: ${answers5.slice(0, 8).map((a) => a.word).join(', ')}`)
-console.log(`sample7: ${answers7.slice(0, 8).map((a) => a.word).join(', ')}`)
+console.log(`answers-5: ${answers5Out.length}`)
+console.log(`answers-7: ${answers7Out.length}`)
+console.log(`definitions: ${defCount}`)
+console.log(`sample5: ${answers5Out.slice(0, 8).map((a) => a.word).join(', ')}`)
+console.log(`sample7: ${answers7Out.slice(0, 8).map((a) => a.word).join(', ')}`)

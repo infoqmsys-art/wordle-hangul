@@ -813,7 +813,10 @@ function App() {
                 </p>
               )}
               {game.definition && (
-                <p className="finish-def">{game.definition}</p>
+                <p className="finish-def">
+                  <span className="finish-def-label">사전 뜻</span>
+                  {game.definition}
+                </p>
               )}
             </div>
 

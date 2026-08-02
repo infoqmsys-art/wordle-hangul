@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dict": "node scripts/build-dict.mjs",
+    "dict:defs": "node scripts/fetch-definitions.mjs",
     "predev": "node scripts/build-dict.mjs",
     "prebuild": "node scripts/build-dict.mjs",
     "dev": "vite",

@@ -372,10 +372,24 @@ export function useGame() {
 
   useEffect(() => {
     if (!answerEntry || (status !== 'won' && status !== 'lost')) return
+    // 빌드에 포함된 사전 뜻 우선, 없으면(로컬 등) API 조회
+    if (answerEntry.definition) {
+      setDefinition(answerEntry.definition)
+      return
+    }
+    const cached = dict
+      ? [...dict.answers5, ...dict.answers7].find(
+          (a) => a.word === answerEntry.word,
+        )?.definition
+      : undefined
+    if (cached) {
+      setDefinition(cached)
+      return
+    }
     lookupStdict(answerEntry.word).then((result) => {
       if (result?.definition) setDefinition(result.definition)
     })
-  }, [answerEntry, status])
+  }, [answerEntry, status, dict])
 
   const triggerShake = useCallback(() => {
     setShake(true)
