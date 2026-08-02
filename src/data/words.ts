@@ -56,7 +56,7 @@ export async function loadDictionary(): Promise<Dictionary> {
       guesses: (await guessRes.json()) as Record<string, string>,
       answers5: (await a5Res.json()) as WordEntry[],
       answers7: (await a7Res.json()) as WordEntry[],
-      source: '표준국어대사전 명사 + 일상 친숙어',
+      source: '표준국어대사전 명사(COMMON) + 일상 친숙어',
     }
     return cached
   })()
@@ -98,7 +98,8 @@ function shuffleWords(words: string[]): string[] {
 }
 
 function practiceDeckKey(difficulty: Difficulty): string {
-  return `wordle-hangul-practice-deck-v1-${difficulty}`
+  // 정답 풀 규모가 바뀌면 버전을 올려 로컬 덱을 다시 섞는다
+  return `wordle-hangul-practice-deck-v2-${difficulty}`
 }
 
 function loadPracticeDeck(difficulty: Difficulty): string[] {

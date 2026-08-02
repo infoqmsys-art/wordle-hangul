@@ -178,7 +178,18 @@ const FAMILIAR = [
   '초코플', '사탕집', '과자점',
 ]
 
-const answers5 = buildAnswers(FAMILIAR, 5, guesses)
+// 정답 풀: 친숙 수동목록 + 패키지 COMMON_NOUNS (워드클용 흔한 명사)
+// 추측 허용은 ALL_NOUNS 기반 guesses.json
+const answers5Map = {}
+for (const entry of [
+  ...buildAnswers(FAMILIAR, 5, guesses),
+  ...buildAnswers(COMMON_NOUNS, 5, guesses),
+]) {
+  const key = entry.jamo.join('')
+  if (!answers5Map[key]) answers5Map[key] = entry
+}
+const answers5 = Object.values(answers5Map)
+
 const answers7Map = {}
 for (const entry of [
   ...buildAnswers(FAMILIAR, 7, guesses),
