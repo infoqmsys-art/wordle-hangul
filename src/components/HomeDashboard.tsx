@@ -12,6 +12,8 @@ import { HoldBadge, HoldTrail } from './HoldBadge'
 type Props = {
   profile: UserProfile | null
   streak: number
+  played: number
+  wins: number
   onOpenProfile: () => void
   onOpenRanking: () => void
   onOpenShop?: () => void
@@ -27,6 +29,8 @@ function formatToday(): string {
 export function HomeDashboard({
   profile,
   streak,
+  played,
+  wins,
   onOpenProfile,
   onOpenRanking,
   onOpenShop,
@@ -37,6 +41,7 @@ export function HomeDashboard({
   const levelView = profile ? progressFromXp(profile.xp) : null
   const pending = profile?.pendingWeekReward ?? null
   const canClaim = isRewardClaimable(pending)
+  const losses = Math.max(0, played - wins)
 
   return (
     <div className="home-dash">
@@ -99,12 +104,27 @@ export function HomeDashboard({
       ) : (
         <section className="home-card">
           <p className="home-card-kicker">이 브라우저</p>
-          <strong className="home-guest-title">오늘의 기록</strong>
+          <strong className="home-guest-title">내 전적</strong>
           <p className="home-guest-sub">
-            {streak >= 2 ? `${streak}연승 중` : '게임을 시작해 보세요'}
+            {streak >= 2 ? `${streak}연승 중` : '쉬움·어려움 합산'}
           </p>
         </section>
       )}
+
+      <section className="home-record" aria-label="누적 전적">
+        <div>
+          <span>판수</span>
+          <strong>{played}</strong>
+        </div>
+        <div>
+          <span>승</span>
+          <strong>{wins}</strong>
+        </div>
+        <div>
+          <span>패</span>
+          <strong>{losses}</strong>
+        </div>
+      </section>
 
       {pending && (
         <section

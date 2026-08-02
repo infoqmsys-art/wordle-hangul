@@ -97,12 +97,13 @@ export function Board({
         flip: revealingRow === i,
       })
     } else if (i === rows.length) {
+      // current에 힌트 칸이 이미 고정되어 있음. 표시만 힌트 스타일.
       const jamo = Array.from({ length: wordLength }, (_, k) => {
         const hint = hintGrid[i]?.[k]
         if (hint) return hint
         return current[k] ?? ''
       })
-      const statuses: TileStatus[] = jamo.map((_, k) => {
+      const statuses: TileStatus[] = Array.from({ length: wordLength }, (_, k) => {
         if (hintGrid[i]?.[k]) return 'hint'
         return current[k] ? 'tbd' : 'empty'
       })

@@ -242,7 +242,8 @@ async function fetchPracticeRecords(): Promise<PracticeRec[]> {
     if (data.playMode === 'daily') continue
     const uid = data.uid ? String(data.uid) : ''
     const nickname = String(data.name ?? '').trim()
-    if (!uid && !nickname) continue
+    // 비로그인 기록은 주간 XP 집계에서 제외
+    if (!uid || !nickname) continue
     const wordLength = Number(data.wordLength ?? 5)
     const difficulty: Difficulty =
       data.difficulty === 'hard' || wordLength === 7 ? 'hard' : 'easy'
@@ -252,8 +253,8 @@ async function fetchPracticeRecords(): Promise<PracticeRec[]> {
       data.won === 'true' ||
       data.won === '1'
     out.push({
-      uid: uid || `name:${nickname.toLowerCase()}`,
-      nickname: nickname || '플레이어',
+      uid,
+      nickname,
       won,
       attempts: Math.max(0, Number(data.attempts ?? 0)),
       difficulty,

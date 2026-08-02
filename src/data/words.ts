@@ -86,16 +86,69 @@ export function findWordByJamo(
   return dict.guesses[jamoKey(jamo)]
 }
 
+function shuffleWords(words: string[]): string[] {
+  const next = [...words]
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const tmp = next[i]!
+    next[i] = next[j]!
+    next[j] = tmp
+  }
+  return next
+}
+
+function practiceDeckKey(difficulty: Difficulty): string {
+  return `wordle-hangul-practice-deck-v1-${difficulty}`
+}
+
+function loadPracticeDeck(difficulty: Difficulty): string[] {
+  try {
+    const raw = localStorage.getItem(practiceDeckKey(difficulty))
+    if (!raw) return []
+    const list = JSON.parse(raw) as unknown
+    return Array.isArray(list)
+      ? list.filter((w): w is string => typeof w === 'string' && w.length > 0)
+      : []
+  } catch {
+    return []
+  }
+}
+
+function savePracticeDeck(difficulty: Difficulty, words: string[]): void {
+  localStorage.setItem(practiceDeckKey(difficulty), JSON.stringify(words))
+}
+
+/** 난이도별 덱에서 하나씩 뽑음 — 한 바퀴 돌기 전엔 같은 단어 재등장 없음 */
+export function pickPracticeAnswer(
+  dict: Dictionary,
+  difficulty: Difficulty,
+  recentWords: string[] = [],
+): WordEntry {
+  const answers = answersForDifficulty(dict, difficulty)
+  const byWord = new Map(answers.map((a) => [a.word, a]))
+
+  let deck = loadPracticeDeck(difficulty).filter((w) => byWord.has(w))
+  if (deck.length === 0) {
+    const recent = new Set(recentWords)
+    const fresh = answers.filter((a) => !recent.has(a.word)).map((a) => a.word)
+    const late = answers.filter((a) => recent.has(a.word)).map((a) => a.word)
+    deck = [...shuffleWords(fresh), ...shuffleWords(late)]
+    if (deck.length === 0) {
+      deck = shuffleWords(answers.map((a) => a.word))
+    }
+  }
+
+  const word = deck[0]!
+  savePracticeDeck(difficulty, deck.slice(1))
+  return byWord.get(word) ?? answers[0]!
+}
+
 export function pickRandomAnswer(
   dict: Dictionary,
   difficulty: Difficulty,
   avoidWords: string[] = [],
 ): WordEntry {
-  const answers = answersForDifficulty(dict, difficulty)
-  const avoid = new Set(avoidWords)
-  const pool = answers.filter((a) => !avoid.has(a.word))
-  const source = pool.length > 0 ? pool : answers
-  return source[Math.floor(Math.random() * source.length)]
+  return pickPracticeAnswer(dict, difficulty, avoidWords)
 }
 
 export function pickDailyAnswer(

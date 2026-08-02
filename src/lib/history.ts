@@ -171,6 +171,8 @@ async function filterPublicRecords(
 
   return records.flatMap((r) => {
     if (HIDDEN_RECORD_IDS.has(r.id)) return []
+    // 비로그인(게스트) 기록은 공유 목록·랭킹에 노출하지 않음
+    if (!r.uid) return []
     if (r.playMode === 'daily') {
       return [{ ...r, word: '' }]
     }
@@ -238,6 +240,8 @@ async function loadWinRecords(difficulty: Difficulty): Promise<Agg[]> {
   for (const r of parsed) {
     if (!r.won) continue
     if (r.difficulty !== difficulty) continue
+    // 로그인 계정 기록만 (uid 없는 게스트 이름은 집계 제외)
+    if (!r.uid) continue
     const name = r.name.trim()
     if (!name) continue
 

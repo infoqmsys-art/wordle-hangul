@@ -13,10 +13,11 @@ import { ShopModal } from './components/ShopModal'
 import { DIFFICULTY_META } from './data/words'
 import { useAuth } from './hooks/useAuth'
 import { useGame, MAX_ATTEMPTS } from './hooks/useGame'
-import { formatSeconds, getLastName, saveHistoryRecord } from './lib/history'
+import { formatSeconds, saveHistoryRecord } from './lib/history'
 import { shareChallenge } from './lib/challenge'
 import { getHold } from './lib/levels'
 import { awardMatchXp } from './lib/progress'
+import { getPersonalStats } from './lib/stats'
 import './App.css'
 
 type XpFlash = {
@@ -127,12 +128,10 @@ function App() {
       if (game.status === 'playing') autoSaveKey.current = null
       return
     }
-    const nick = (auth.user?.nickname?.trim() || getLastName().trim()).slice(
-      0,
-      20,
-    )
-    // 닉네임 없으면 저장 불가 (비로그인 + 이름 미설정)
-    if (!nick) return
+    // 클라우드 기록은 로그인 계정만 (비로그인은 이름만으로 섞이지 않게)
+    const nick = auth.user?.nickname?.trim().slice(0, 20)
+    const uid = auth.user?.uid
+    if (!nick || !uid) return
     if (!game.playMode) return
 
     const key = `${game.playMode}:${game.answerWord}:${game.dateKey}:${game.difficulty}:${game.status}:${game.rows.length}`
@@ -152,7 +151,7 @@ function App() {
       wordLength: game.wordLength,
       playMode: game.playMode,
       hintUsed: game.hintUsedThisGame,
-      uid: auth.user?.uid,
+      uid,
     })
       .then(() => {
         game.markRecordSaved()
@@ -294,6 +293,10 @@ function App() {
   )
 
   if (game.needMode) {
+    const localStats = getPersonalStats()
+    const homePlayed = Math.max(auth.user?.played ?? 0, localStats.played)
+    const homeWins = Math.max(auth.user?.wins ?? 0, localStats.wins)
+
     return (
       <div className="app is-home">
         <header className="header">
@@ -385,6 +388,8 @@ function App() {
             <HomeDashboard
               profile={auth.user}
               streak={game.currentStreak}
+              played={homePlayed}
+              wins={homeWins}
               onOpenProfile={openProfile}
               onOpenRanking={() => openRanking('classic')}
               onOpenShop={

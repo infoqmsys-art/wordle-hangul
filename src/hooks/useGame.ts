@@ -5,7 +5,7 @@ import {
   isValidGuess,
   loadDictionary,
   pickDailyAnswer,
-  pickRandomAnswer,
+  pickPracticeAnswer,
   type Difficulty,
   type Dictionary,
   type WordEntry,
@@ -35,6 +35,34 @@ export type PlayMode = 'daily' | 'practice'
 export type Row = {
   jamo: string[]
   statuses: TileStatus[]
+}
+
+/** 현재 입력줄을 고정 길이로 맞춤 (빈 칸은 '') */
+function padRow(prev: string[], len: number): string[] {
+  return Array.from({ length: len }, (_, i) => prev[i] ?? '')
+}
+
+/** 힌트 칸을 잠근 채, 기존 입력을 빈 칸에 다시 배치 */
+function rowWithLockedHint(
+  prev: string[],
+  len: number,
+  hintCol: number,
+  hintCh: string,
+): string[] {
+  const padded = padRow(prev, len)
+  // 힌트 적용 전은 앞에서부터 packed 입력일 수 있음 → 전체를 재배치 큐로
+  const packed = prev.length > 0 && prev.length <= len && prev.every(Boolean)
+  const queue = packed
+    ? [...prev]
+    : padded.filter((ch, i) => Boolean(ch) && i !== hintCol)
+  const next = Array.from({ length: len }, () => '')
+  next[hintCol] = hintCh
+  let qi = 0
+  for (let i = 0; i < len; i++) {
+    if (i === hintCol) continue
+    if (qi < queue.length) next[i] = queue[qi++]!
+  }
+  return next
 }
 
 type Persisted = {
@@ -78,7 +106,8 @@ function normalizeHintGrid(
 const RECENT_KEY = 'wordle-hangul-recent-v5'
 const DIFF_KEY = 'wordle-hangul-difficulty'
 const MODE_KEY = 'wordle-hangul-play-mode'
-const RECENT_LIMIT = 40
+/** 덱을 다시 섞을 때 최근에 본 단어를 뒤로 보내기 위한 기록 길이 */
+const RECENT_LIMIT = 120
 
 function loadSession(): Persisted | null {
   try {
@@ -218,7 +247,14 @@ export function useGame() {
         )
         setCelebrate(false)
         setCurrentStreak(getPersonalStats().currentStreak)
-        setCurrent([])
+        if (saved.status === 'playing') {
+          const hintRow = grid[restored.length] ?? []
+          setCurrent(
+            Array.from({ length: cols }, (_, i) => hintRow[i] ?? ''),
+          )
+        } else {
+          setCurrent([])
+        }
         setDefinition(null)
         return
       }
@@ -358,8 +394,9 @@ export function useGame() {
       const answer =
         mode === 'daily'
           ? pickDailyAnswer(dict, diff)
-          : pickRandomAnswer(dict, diff, loadRecentWords())
+          : pickPracticeAnswer(dict, diff, loadRecentWords())
       applyRound(mode, diff, answer)
+      if (mode === 'practice') pushRecentWord(answer.word)
       if (mode === 'daily') {
         showToast(
           diff === 'hard' ? '오늘의 단어 · 어려움' : '오늘의 단어 · 쉬움',
@@ -376,8 +413,9 @@ export function useGame() {
     clearSession()
     setChallengeMode(false)
     // 오늘의 단어가 끝나면 같은 난이도 메인게임으로 이어감
-    const answer = pickRandomAnswer(dict, difficulty, loadRecentWords())
+    const answer = pickPracticeAnswer(dict, difficulty, loadRecentWords())
     applyRound('practice', difficulty, answer)
+    pushRecentWord(answer.word)
     showToast(playMode === 'daily' ? '메인게임으로 이어갈게요!' : '다음 문제!')
   }, [dict, difficulty, playMode, applyRound, showToast])
 
@@ -456,17 +494,18 @@ export function useGame() {
         return null
       }
       const ch = answerEntry.jamo[col]!
+      const len = answerEntry.jamo.length
       setHintGrid((prev) => {
         const next = prev.map((r) => [...r])
         while (next.length < MAX_ATTEMPTS) {
-          next.push(Array.from({ length: answerEntry.jamo.length }, () => null))
+          next.push(Array.from({ length: len }, () => null))
         }
-        next[row] =
-          next[row] ??
-          Array.from({ length: answerEntry.jamo.length }, () => null)
+        next[row] = next[row] ?? Array.from({ length: len }, () => null)
         next[row]![col] = ch
         return next
       })
+      // 힌트 칸은 입력줄에도 고정 — 지우기/덮어쓰기 불가
+      setCurrent((prev) => rowWithLockedHint(prev, len, col, ch))
       setKeyStatuses((prev) => ({
         ...prev,
         [ch]: mergeKeyStatus(prev[ch] ?? 'unused', 'hint'),
@@ -520,26 +559,44 @@ export function useGame() {
     (key: string) => {
       if (locked || !dict || !answerEntry) return
 
+      const rowIndex = rows.length
+      const hintRow = hintGrid[rowIndex] ?? []
+      const guess = padRow(current, wordLength)
+
       if (key === 'Backspace') {
-        setCurrent((prev) => prev.slice(0, -1))
+        setCurrent((prev) => {
+          const next = padRow(prev, wordLength)
+          for (let i = wordLength - 1; i >= 0; i--) {
+            if (hintRow[i]) continue // 힌트 칸 고정
+            if (next[i]) {
+              next[i] = ''
+              break
+            }
+          }
+          return next
+        })
         return
       }
 
       if (key === 'Enter') {
-        if (current.length !== wordLength) {
+        if (guess.some((ch) => !ch)) {
           showToast(`자모 ${wordLength}개를 입력해 주세요`)
           triggerShake()
           return
         }
-        if (!isValidGuess(dict, current)) {
+        // 힌트 칸은 정답 자모로 확정
+        for (let i = 0; i < wordLength; i++) {
+          const hintCh = hintRow[i]
+          if (hintCh) guess[i] = hintCh
+        }
+        if (!isValidGuess(dict, guess)) {
           showToast('사전에 없는 단어예요')
           triggerShake()
           return
         }
 
-        const statuses = evaluateGuess(current, answerEntry.jamo)
-        const nextRow: Row = { jamo: [...current], statuses }
-        const rowIndex = rows.length
+        const statuses = evaluateGuess(guess, answerEntry.jamo)
+        const nextRow: Row = { jamo: [...guess], statuses }
         const won = statuses.every((s) => s === 'correct')
         const word = answerEntry.word
 
@@ -568,10 +625,15 @@ export function useGame() {
       if (parts.length === 0) return
       ensureTimer()
       setCurrent((prev) => {
-        const next = [...prev]
+        const next = padRow(prev, wordLength)
+        // 힌트 칸이 비어 보이면 안 되므로 잠금 문자 유지
+        for (let i = 0; i < wordLength; i++) {
+          if (hintRow[i]) next[i] = hintRow[i]!
+        }
         for (const part of parts) {
-          if (next.length >= wordLength) break
-          next.push(part)
+          const idx = next.findIndex((ch, i) => !ch && !hintRow[i])
+          if (idx === -1) break
+          next[idx] = part
         }
         return next
       })
@@ -583,6 +645,7 @@ export function useGame() {
       current,
       rows.length,
       wordLength,
+      hintGrid,
       showToast,
       triggerShake,
       ensureTimer,
