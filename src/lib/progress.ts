@@ -50,6 +50,8 @@ export type UserProgress = {
   lastDailyHintDate: string
   /** 경제 시스템 초기화 여부 (0이면 미초기화) */
   economyVersion: number
+  /** 우편함에서 이미 수령한 보상 id */
+  claimedMailIds: string[]
 }
 
 export const emptyProgress = (): UserProgress => ({
@@ -64,6 +66,7 @@ export const emptyProgress = (): UserProgress => ({
   tokens: 0,
   lastDailyHintDate: '',
   economyVersion: 0,
+  claimedMailIds: [],
 })
 
 function parsePending(
@@ -96,6 +99,11 @@ export function parseUserProgress(
     tokens: Math.max(0, Number(data.tokens ?? 0)),
     lastDailyHintDate: String(data.lastDailyHintDate ?? ''),
     economyVersion: Math.max(0, Number(data.economyVersion ?? 0)),
+    claimedMailIds: Array.isArray(data.claimedMailIds)
+      ? data.claimedMailIds.filter(
+          (id): id is string => typeof id === 'string' && id.length > 0,
+        )
+      : [],
   }
 }
 
@@ -112,6 +120,7 @@ function progressWriteFields(progress: UserProgress) {
     tokens: progress.tokens,
     lastDailyHintDate: progress.lastDailyHintDate,
     economyVersion: progress.economyVersion,
+    claimedMailIds: progress.claimedMailIds,
   }
 }
 

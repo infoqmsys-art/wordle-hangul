@@ -44,6 +44,7 @@ export type UserProfile = {
   tokens: number
   lastDailyHintDate: string
   economyVersion: number
+  claimedMailIds: string[]
 } & PersonalStats
 
 export function getActiveUid(): string | null {
@@ -63,6 +64,7 @@ function progressFields(p: UserProgress) {
     tokens: p.tokens,
     lastDailyHintDate: p.lastDailyHintDate,
     economyVersion: p.economyVersion,
+    claimedMailIds: p.claimedMailIds,
   }
 }
 
@@ -424,6 +426,7 @@ export async function updateNickname(
     tokens: current.tokens,
     lastDailyHintDate: current.lastDailyHintDate,
     economyVersion: current.economyVersion,
+    claimedMailIds: current.claimedMailIds ?? [],
   }
 
   const nickname = await saveProfileWithUniqueNickname({

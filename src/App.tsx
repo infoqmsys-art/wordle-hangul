@@ -9,6 +9,7 @@ import { Keyboard } from './components/Keyboard'
 import { ModeSelect } from './components/ModeSelect'
 import { ProfileModal } from './components/ProfileModal'
 import { RankingModal } from './components/RankingModal'
+import { MailboxModal } from './components/MailboxModal'
 import { ShopModal } from './components/ShopModal'
 import { DIFFICULTY_META } from './data/words'
 import { useAuth } from './hooks/useAuth'
@@ -16,6 +17,7 @@ import { useGame, MAX_ATTEMPTS } from './hooks/useGame'
 import { formatSeconds, saveHistoryRecord } from './lib/history'
 import { shareChallenge } from './lib/challenge'
 import { getHold } from './lib/levels'
+import { hasUnclaimedMail } from './lib/mailbox'
 import { awardMatchXp } from './lib/progress'
 import { getPersonalStats } from './lib/stats'
 import './App.css'
@@ -45,6 +47,7 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [modePickerOpen, setModePickerOpen] = useState(false)
   const [shopOpen, setShopOpen] = useState(false)
+  const [mailboxOpen, setMailboxOpen] = useState(false)
   const [xpFlash, setXpFlash] = useState<XpFlash | null>(null)
   const [hintBusy, setHintBusy] = useState(false)
   const [hintPickMode, setHintPickMode] = useState(false)
@@ -53,6 +56,7 @@ function App() {
     col: number
   } | null>(null)
   const prevGameStatus = useRef(game.status)
+  const mailAutoShownFor = useRef<string | null>(null)
   const patchProgress = auth.patchProgress
 
   useEffect(() => {
@@ -68,6 +72,18 @@ function App() {
     if (!auth.ready || !auth.user) return
     refreshStreak()
   }, [auth.ready, auth.user, refreshStreak])
+
+  // 로그인 유저 미수령 우편 있으면 홈에서 한 번 자동으로 열어줌
+  useEffect(() => {
+    if (!auth.ready || !auth.user) {
+      if (!auth.user) mailAutoShownFor.current = null
+      return
+    }
+    if (!hasUnclaimedMail(auth.user.claimedMailIds ?? [])) return
+    if (mailAutoShownFor.current === auth.user.uid) return
+    mailAutoShownFor.current = auth.user.uid
+    setMailboxOpen(true)
+  }, [auth.ready, auth.user])
 
   useEffect(() => {
     if (game.status !== 'playing') {
@@ -364,6 +380,20 @@ function App() {
                   상점
                 </button>
               )}
+              {auth.user && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMailboxOpen(true)
+                    setMenuOpen(false)
+                  }}
+                >
+                  우편함
+                  {hasUnclaimedMail(auth.user.claimedMailIds ?? [])
+                    ? ' · NEW'
+                    : ''}
+                </button>
+              )}
             </div>
           )}
         </header>
@@ -399,6 +429,13 @@ function App() {
                     }
                   : undefined
               }
+              onOpenMailbox={
+                auth.user
+                  ? () => {
+                      setMailboxOpen(true)
+                    }
+                  : undefined
+              }
               onClaimReward={auth.user ? auth.claimReward : undefined}
               claimBusy={auth.busy}
             />
@@ -414,7 +451,7 @@ function App() {
           </>
         )}
         {game.toast && <div className="toast">{game.toast}</div>}
-        {auth.error && !profileOpen && !shopOpen && (
+        {auth.error && !profileOpen && !shopOpen && !mailboxOpen && (
           <div className="toast">{auth.error}</div>
         )}
         <HowTo
@@ -448,6 +485,19 @@ function App() {
             error={auth.error}
             onBuy={auth.buyItem}
             onRefresh={auth.refreshEconomy}
+          />
+        )}
+        {auth.user && (
+          <MailboxModal
+            open={mailboxOpen}
+            onClose={() => {
+              setMailboxOpen(false)
+              auth.clearError()
+            }}
+            claimedMailIds={auth.user.claimedMailIds ?? []}
+            busy={auth.busy}
+            error={auth.error}
+            onClaim={auth.claimMail}
           />
         )}
         {profileModal}
@@ -570,6 +620,20 @@ function App() {
                 }}
               >
                 상점
+              </button>
+            )}
+            {auth.user && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMailboxOpen(true)
+                  setMenuOpen(false)
+                }}
+              >
+                우편함
+                {hasUnclaimedMail(auth.user.claimedMailIds ?? [])
+                  ? ' · NEW'
+                  : ''}
               </button>
             )}
             {finished && (
@@ -816,7 +880,7 @@ function App() {
       </main>
 
       {game.toast && <div className="toast">{game.toast}</div>}
-      {auth.error && !profileOpen && !shopOpen && (
+      {auth.error && !profileOpen && !shopOpen && !mailboxOpen && (
         <div className="toast">{auth.error}</div>
       )}
       <Confetti active={game.celebrate} streak={game.currentStreak} />
@@ -852,6 +916,19 @@ function App() {
           error={auth.error}
           onBuy={auth.buyItem}
           onRefresh={auth.refreshEconomy}
+        />
+      )}
+      {auth.user && (
+        <MailboxModal
+          open={mailboxOpen}
+          onClose={() => {
+            setMailboxOpen(false)
+            auth.clearError()
+          }}
+          claimedMailIds={auth.user.claimedMailIds ?? []}
+          busy={auth.busy}
+          error={auth.error}
+          onClaim={auth.claimMail}
         />
       )}
       {profileModal}

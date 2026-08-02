@@ -40,6 +40,7 @@ function economyPayload(nickname: string, progress: UserProgress) {
     tokens: progress.tokens,
     lastDailyHintDate: progress.lastDailyHintDate,
     economyVersion: progress.economyVersion,
+    claimedMailIds: progress.claimedMailIds,
     updatedAt: serverTimestamp(),
   }
 }

@@ -11,6 +11,7 @@ import {
   type UserProfile,
 } from '../lib/auth'
 import { buyShopItem, consumeHint, syncEconomy } from '../lib/economy'
+import { claimMailItem } from '../lib/mailbox'
 import { claimWeekReward, type UserProgress } from '../lib/progress'
 
 export function useAuth() {
@@ -174,6 +175,29 @@ export function useAuth() {
     }
   }, [user])
 
+  const claimMail = useCallback(
+    async (mailId: string) => {
+      if (!user) return false
+      setBusy(true)
+      setError(null)
+      try {
+        const { progress } = await claimMailItem(
+          user.uid,
+          user.nickname,
+          mailId,
+        )
+        setUser(applyProgressToProfile(user, progress))
+        return true
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '우편 수령에 실패했어요')
+        return false
+      } finally {
+        setBusy(false)
+      }
+    },
+    [user],
+  )
+
   return {
     user,
     ready,
@@ -185,6 +209,7 @@ export function useAuth() {
     rename,
     signOut,
     claimReward,
+    claimMail,
     patchProgress,
     refreshEconomy,
     buyItem,

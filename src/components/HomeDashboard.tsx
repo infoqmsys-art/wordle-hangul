@@ -7,6 +7,7 @@ import {
   isRewardClaimable,
   progressFromXp,
 } from '../lib/levels'
+import { hasUnclaimedMail } from '../lib/mailbox'
 import { HoldBadge, HoldTrail } from './HoldBadge'
 
 type Props = {
@@ -17,6 +18,7 @@ type Props = {
   onOpenProfile: () => void
   onOpenRanking: () => void
   onOpenShop?: () => void
+  onOpenMailbox?: () => void
   onClaimReward?: () => Promise<{ gained: number } | null>
   claimBusy?: boolean
 }
@@ -34,6 +36,7 @@ export function HomeDashboard({
   onOpenProfile,
   onOpenRanking,
   onOpenShop,
+  onOpenMailbox,
   onClaimReward,
   claimBusy,
 }: Props) {
@@ -42,6 +45,9 @@ export function HomeDashboard({
   const pending = profile?.pendingWeekReward ?? null
   const canClaim = isRewardClaimable(pending)
   const losses = Math.max(0, played - wins)
+  const mailReady = Boolean(
+    profile && hasUnclaimedMail(profile.claimedMailIds ?? []),
+  )
 
   return (
     <div className="home-dash">
@@ -181,6 +187,15 @@ export function HomeDashboard({
         <button type="button" className="home-quick-btn" onClick={onOpenRanking}>
           랭킹
         </button>
+        {profile && onOpenMailbox && (
+          <button
+            type="button"
+            className={`home-quick-btn${mailReady ? ' has-mail' : ''}`}
+            onClick={onOpenMailbox}
+          >
+            우편함{mailReady ? ' · NEW' : ''}
+          </button>
+        )}
         <button type="button" className="home-quick-btn" onClick={onOpenProfile}>
           내 정보
         </button>

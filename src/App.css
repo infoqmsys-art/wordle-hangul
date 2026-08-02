@@ -1862,7 +1862,7 @@ button.tile {
 
 .home-quick {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   gap: 8px;
 }
 
@@ -1882,6 +1882,12 @@ button.tile {
 .home-quick-btn:hover {
   border-color: var(--blue-border);
   background: var(--blue-soft);
+}
+
+.home-quick-btn.has-mail {
+  border-color: #c9892e;
+  color: #9a6418;
+  background: #fff8e8;
 }
 
 .home-reward {
@@ -2906,5 +2912,91 @@ button.tile {
   color: var(--muted);
   font-weight: 600;
   line-height: 1.4;
+  text-align: center;
+}
+
+.mailbox-modal .modal-sub {
+  margin-bottom: 12px;
+}
+
+.mail-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mail-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border);
+  background: var(--surface-soft);
+  text-align: left;
+}
+
+.mail-item.is-new {
+  border-color: #c9892e;
+  background: #fff8e8;
+}
+
+.mail-item.is-claimed {
+  opacity: 0.72;
+}
+
+.mail-item strong {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.mail-item p {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.mail-reward {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #9a6418;
+}
+
+.mail-empty {
+  margin: 8px 0 16px;
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.mail-claimed-block {
+  margin-bottom: 12px;
+}
+
+.mail-claimed-label {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.mail-list-claimed {
+  margin-bottom: 0;
+}
+
+.shop-msg {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #2e7d32;
   text-align: center;
 }
