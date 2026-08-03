@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   DAILY_FREE_HINTS,
   SHOP_ITEMS,
@@ -46,13 +46,17 @@ export function ShopModal({
   const [tab, setTab] = useState<ShopTab>(initialTab)
   const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const wasOpen = useRef(false)
 
+  // 상점이 열릴 때만 초기 탭 적용 (새로고침/리렌더로 힌트 탭에 끌려가지 않게)
   useEffect(() => {
-    if (!open) return
-    setTab(initialTab)
-    setMsg(null)
-    setError(null)
-    if (loggedIn) void onRefresh?.()
+    if (open && !wasOpen.current) {
+      setTab(initialTab)
+      setMsg(null)
+      setError(null)
+      if (loggedIn) void onRefresh?.()
+    }
+    wasOpen.current = open
   }, [open, initialTab, loggedIn, onRefresh])
 
   if (!open) return null
