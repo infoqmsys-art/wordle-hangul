@@ -122,18 +122,17 @@ export function authErrorMessage(err: unknown): string | null {
     return '시도가 너무 많아요. 잠시 후 다시 해 주세요'
   }
   if (code === 'auth/operation-not-allowed') {
-    return 'Firebase에서 이메일/비밀번호 로그인을 아직 켜지 않았어요'
+    return '로그인을 잠시 사용할 수 없어요. 나중에 다시 시도해 주세요'
   }
   if (code === 'auth/network-request-failed') {
     return '네트워크 연결을 확인해 주세요'
   }
   if (code === 'permission-denied' || message.includes('permission-denied')) {
-    return 'Firestorestore 규칙에 users/nicknames 권한이 필요해요 (콘솔에서 규칙 게시)'
+    return '지금은 저장할 수 없어요. 잠시 후 다시 시도해 주세요'
   }
   if (message.includes('닉네임을 입력') || message.includes('비밀번호')) {
     return message
   }
-  if (code) return `처리 실패 (${code})`
   return '요청 처리에 실패했어요'
 }
 

@@ -56,11 +56,6 @@ export function ThemeModal({ open, themeId, onSelect, onClose }: Props) {
           })}
         </ul>
 
-        <p className="theme-note">
-          특정 애니 캐릭터 그림은 저작권 때문에 넣을 수 없고, 「애니감」처럼
-          색·분위기 테마는 가능해요.
-        </p>
-
         <button type="button" className="btn-primary full" onClick={onClose}>
           닫기
         </button>

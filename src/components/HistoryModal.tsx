@@ -38,7 +38,7 @@ export function HistoryModal({ open, onClose }: Props) {
 
     if (!isSharedHistoryEnabled()) {
       setRecords([])
-      setError('공유 기록이 아직 설정되지 않았어요. Firebase 설정이 필요해요.')
+      setError('기록을 불러올 수 없어요. 잠시 후 다시 시도해 주세요.')
       setLoading(false)
       return
     }

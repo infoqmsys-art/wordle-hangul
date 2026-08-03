@@ -47,7 +47,6 @@ export function RankingModal({
   const [weekMode, setWeekMode] = useState<WeeklyRankMode>('plays')
   const [ranking, setRanking] = useState<RankEntry[]>([])
   const [weekRanking, setWeekRanking] = useState<WeeklyRankEntry[]>([])
-  const [weekKey, setWeekKey] = useState(getWeekKey())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -69,7 +68,7 @@ export function RankingModal({
     setWeekRanking([])
 
     if (!isSharedHistoryEnabled()) {
-      setError('공유 기록이 아직 연결되지 않았어요')
+      setError('랭킹을 불러올 수 없어요. 잠시 후 다시 시도해 주세요.')
       setLoading(false)
       return
     }
@@ -77,9 +76,7 @@ export function RankingModal({
     const load =
       variant === 'xp'
         ? (() => {
-            const key = getWeekKey()
-            setWeekKey(key)
-            return loadWeeklyRanking(key, weekMode).then((list) => {
+            return loadWeeklyRanking(getWeekKey(), weekMode).then((list) => {
               if (!alive) return
               setWeekRanking(list)
               setError(null)
@@ -176,29 +173,24 @@ export function RankingModal({
         )}
 
         {isWeek && (
-          <>
-            <div
-              className="rank-mode-tabs rank-week-tabs"
-              role="tablist"
-              aria-label="이번 주 기준"
-            >
-              {(Object.keys(WEEK_MODE_LABEL) as WeeklyRankMode[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="tab"
-                  aria-selected={weekMode === m}
-                  className={weekMode === m ? 'on' : ''}
-                  onClick={() => setWeekMode(m)}
-                >
-                  {WEEK_MODE_LABEL[m]}
-                </button>
-              ))}
-            </div>
-            <p className="rank-week-key" aria-label="주간 키">
-              {weekKey} · 월 09:00 기준
-            </p>
-          </>
+          <div
+            className="rank-mode-tabs rank-week-tabs"
+            role="tablist"
+            aria-label="이번 주 기준"
+          >
+            {(Object.keys(WEEK_MODE_LABEL) as WeeklyRankMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={weekMode === m}
+                className={weekMode === m ? 'on' : ''}
+                onClick={() => setWeekMode(m)}
+              >
+                {WEEK_MODE_LABEL[m]}
+              </button>
+            ))}
+          </div>
         )}
 
         {!isWeek && (

@@ -2361,19 +2361,6 @@ button.tile {
   margin-bottom: 8px;
 }
 
-.rank-week-key {
-  margin: 0 0 10px;
-  text-align: center;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.rank-week-wins {
-  font-weight: 700;
-  color: var(--muted);
-}
-
 .rank-level {
   margin-left: 4px;
   color: var(--muted);
@@ -3251,13 +3238,5 @@ button.tile {
   --bg: #ffffff;
   --border: #e6ebf5;
   --tile-solved-ink: #ffffff;
-}
-
-.theme-note {
-  margin: 0 0 12px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--muted);
-  line-height: 1.45;
 }
 

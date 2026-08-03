@@ -30,7 +30,7 @@ export const BOARD_THEMES: BoardTheme[] = [
   {
     id: 'sakura',
     name: '애니감',
-    description: '파스텔 분홍·라벤더 (캐릭터 아님)',
+    description: '파스텔 분홍·라벤더 톤',
   },
   {
     id: 'night',
