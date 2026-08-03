@@ -90,6 +90,8 @@ export function ThemeModal({
           </p>
         )}
 
+        {error && <p className="theme-feedback is-error">{error}</p>}
+
         <ul className="theme-list">
           {BOARD_THEMES.map((theme) => {
             const owned =
@@ -176,8 +178,6 @@ export function ThemeModal({
             )
           })}
         </ul>
-
-        {error && <p className="theme-feedback is-error">{error}</p>}
 
         <button type="button" className="btn-primary full" onClick={close}>
           닫기

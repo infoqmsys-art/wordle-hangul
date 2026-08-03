@@ -3197,6 +3197,25 @@ button.tile {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.theme-modal {
+  height: min(85svh, 560px);
+  max-height: min(85svh, 560px);
+  overflow: hidden;
+}
+
+.theme-modal h2,
+.theme-modal .modal-sub {
+  flex-shrink: 0;
+}
+
+.theme-modal .btn-primary.full {
+  flex-shrink: 0;
 }
 
 .theme-balance {
@@ -3205,6 +3224,7 @@ button.tile {
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--muted);
+  flex-shrink: 0;
 }
 
 .theme-balance strong {
@@ -3218,6 +3238,7 @@ button.tile {
   font-size: 0.8rem;
   font-weight: 800;
   color: var(--warm);
+  flex-shrink: 0;
 }
 
 .theme-card {
@@ -3225,6 +3246,9 @@ button.tile {
   border: 1.5px solid var(--border);
   background: var(--surface-soft);
   padding: 8px;
+  flex-shrink: 0;
+  min-height: 108px;
+  box-sizing: border-box;
 }
 
 .theme-card.is-on {
@@ -3281,6 +3305,7 @@ button.tile {
   font-size: 0.85rem;
   font-weight: 700;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .theme-feedback.is-error {
