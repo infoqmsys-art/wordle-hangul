@@ -1,5 +1,6 @@
 import {
   BOARD_THEMES,
+  THEME_TRIAL_GAMES,
   canUseTheme,
   type BoardThemeId,
   type ThemeTrial,
@@ -15,7 +16,7 @@ type Props = {
   busy?: boolean
   error?: string | null
   trial: ThemeTrial | null
-  trialRemainingMs: number
+  trialGamesLeft: number
   onPreview: (id: BoardThemeId | null) => void
   onEquip: (id: BoardThemeId) => void | Promise<void>
   onBuy: (id: BoardThemeId) => Promise<boolean>
@@ -34,13 +35,6 @@ function MiniPreview({ themeId }: { themeId: BoardThemeId }) {
   )
 }
 
-function formatRemain(ms: number): string {
-  const s = Math.ceil(ms / 1000)
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  return `${m}:${String(r).padStart(2, '0')}`
-}
-
 export function ThemeModal({
   open,
   themeId,
@@ -51,7 +45,7 @@ export function ThemeModal({
   busy,
   error,
   trial,
-  trialRemainingMs,
+  trialGamesLeft,
   onPreview,
   onEquip,
   onBuy,
@@ -77,16 +71,16 @@ export function ThemeModal({
       >
         <h2 id="theme-title">보드 테마</h2>
         <p className="modal-sub">
-          눌러보면 미리보기가 적용돼요. 유료 테마는 15분 체험 후 구매할 수
-          있어요.
+          눌러보면 미리보기가 적용돼요. 유료 테마는 {THEME_TRIAL_GAMES}판
+          체험 후 구매할 수 있어요.
         </p>
         <p className="theme-balance">
           초크가루 <strong>{tokens}</strong>
         </p>
 
-        {trial && trialRemainingMs > 0 && (
+        {trial && trialGamesLeft > 0 && (
           <p className="theme-trial-banner">
-            체험 중 · 남은 시간 {formatRemain(trialRemainingMs)}
+            체험 중 · 남은 {trialGamesLeft}판
           </p>
         )}
 
@@ -99,7 +93,7 @@ export function ThemeModal({
             const active = themeId === theme.id
             const equipped = equippedId === theme.id
             const inTrial =
-              trial?.themeId === theme.id && (trial.expiresAt ?? 0) > Date.now()
+              trial?.themeId === theme.id && (trial.gamesLeft ?? 0) > 0
             const usable = canUseTheme(theme.id, ownedThemeIds, trial)
 
             return (
@@ -124,7 +118,7 @@ export function ThemeModal({
                           : owned
                             ? '보유'
                             : inTrial
-                              ? '체험 중'
+                              ? `체험 ${trialGamesLeft}판`
                               : `${theme.tokenCost} 초크가루`}
                       </span>
                     </span>
@@ -148,7 +142,7 @@ export function ThemeModal({
                           disabled={busy}
                           onClick={() => onTrial(theme.id)}
                         >
-                          15분 체험
+                          {THEME_TRIAL_GAMES}판 체험
                         </button>
                         <button
                           type="button"

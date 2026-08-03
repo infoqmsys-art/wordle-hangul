@@ -14,11 +14,13 @@ import {
   type WeeklyRankMode,
 } from '../lib/progress'
 
+export type RankScope = 'total' | 'week'
+
 type Props = {
   open: boolean
   onClose: () => void
-  /** classic = 단어킹(누적), xp = 이번 주 랭킹 */
-  variant?: 'classic' | 'xp'
+  /** total = 누적, week = 주간 */
+  initialScope?: RankScope
   initialDifficulty?: Difficulty
   onOpenHistory?: () => void
 }
@@ -38,10 +40,11 @@ const WEEK_MODE_LABEL: Record<WeeklyRankMode, string> = {
 export function RankingModal({
   open,
   onClose,
-  variant = 'classic',
+  initialScope = 'week',
   initialDifficulty = 'easy',
   onOpenHistory,
 }: Props) {
+  const [scope, setScope] = useState<RankScope>(initialScope)
   const [tab, setTab] = useState<Difficulty>(initialDifficulty)
   const [mode, setMode] = useState<RankMode>('wins')
   const [weekMode, setWeekMode] = useState<WeeklyRankMode>('plays')
@@ -53,11 +56,12 @@ export function RankingModal({
 
   useEffect(() => {
     if (!open) return
+    setScope(initialScope)
     setTab(initialDifficulty)
     setMode('wins')
     setWeekMode('plays')
     setHelpOpen(false)
-  }, [open, initialDifficulty, variant])
+  }, [open, initialScope, initialDifficulty])
 
   useEffect(() => {
     if (!open) return
@@ -74,14 +78,12 @@ export function RankingModal({
     }
 
     const load =
-      variant === 'xp'
-        ? (() => {
-            return loadWeeklyRanking(getWeekKey(), weekMode).then((list) => {
-              if (!alive) return
-              setWeekRanking(list)
-              setError(null)
-            })
-          })()
+      scope === 'week'
+        ? loadWeeklyRanking(getWeekKey(), weekMode).then((list) => {
+            if (!alive) return
+            setWeekRanking(list)
+            setError(null)
+          })
         : loadRanking(tab, mode).then((list) => {
             if (!alive) return
             setRanking(list)
@@ -102,11 +104,11 @@ export function RankingModal({
     return () => {
       alive = false
     }
-  }, [open, variant, tab, mode, weekMode])
+  }, [open, scope, tab, mode, weekMode])
 
   if (!open) return null
 
-  const isWeek = variant === 'xp'
+  const isWeek = scope === 'week'
   const emptyLabel = isWeek
     ? '이번 주 기록이 아직 없어요'
     : `아직 ${DIFFICULTY_META[tab].label} 기록이 없어요`
@@ -121,9 +123,7 @@ export function RankingModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="rank-title-row">
-          <h2 id="rank-title">
-            {isWeek ? '푸들푸들 이번 주 랭킹' : '푸들푸들 단어킹'}
-          </h2>
+          <h2 id="rank-title">푸들푸들 랭킹</h2>
           <button
             type="button"
             className="rank-help-btn"
@@ -135,19 +135,42 @@ export function RankingModal({
           </button>
         </div>
 
+        <div
+          className="rank-mode-tabs rank-scope-tabs"
+          role="tablist"
+          aria-label="랭킹 범위"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scope === 'week'}
+            className={scope === 'week' ? 'on' : ''}
+            onClick={() => setScope('week')}
+          >
+            주간
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scope === 'total'}
+            className={scope === 'total' ? 'on' : ''}
+            onClick={() => setScope('total')}
+          >
+            누적
+          </button>
+        </div>
+
         {helpOpen && (
           <div className="rank-help-panel" role="note">
             {isWeek ? (
               <>
                 <p>
-                  <strong>이번 주 랭킹</strong>만 보여요. 판수 · 최단시도 ·
-                  최단시간 기준이며, 매주 월요일 09:00에 보드가 새로
-                  시작됩니다. 레벨·누적 전적은 홈에 그대로 남아요.
+                  <strong>주간</strong>은 이번 주 판수 · 최단시도 · 최단시간
+                  순위예요. 매주 월요일 09:00에 새로 시작됩니다.
                 </p>
                 <p>
-                  <strong>최단시도·최단시간</strong>은 이번 주 승리만
-                  집계하고, 주간 보상은 <strong>판수</strong> 순위로 월요일
-                  09:00에 정산됩니다.
+                  최단시도·최단시간은 이번 주 승리만 집계하고, 주간 보상은
+                  판수 순위로 정산됩니다.
                 </p>
                 <ul>
                   <li>1위 +300 XP</li>
@@ -160,23 +183,23 @@ export function RankingModal({
             ) : (
               <>
                 <p>
-                  <strong>단어킹</strong>은 누적 승수 / 최단시간 / 최단시도
-                  순위예요. 주간으로 리셋되지 않아요.
+                  <strong>누적</strong>은 역대 승수 / 최단시간 / 최단시도
+                  순위예요. 주가 바뀌어도 리셋되지 않아요.
                 </p>
                 <p>
-                  <strong>승수</strong>는 메인게임 + 오늘의 단어를 합치고,
-                  <strong> 최단시간·최단시도</strong>는 메인게임만 집계해요.
+                  승수는 메인게임 + 오늘의 단어를 합치고, 최단시간·최단시도는
+                  메인게임만 집계해요.
                 </p>
               </>
             )}
           </div>
         )}
 
-        {isWeek && (
+        {isWeek ? (
           <div
             className="rank-mode-tabs rank-week-tabs"
             role="tablist"
-            aria-label="이번 주 기준"
+            aria-label="주간 기준"
           >
             {(Object.keys(WEEK_MODE_LABEL) as WeeklyRankMode[]).map((m) => (
               <button
@@ -191,9 +214,7 @@ export function RankingModal({
               </button>
             ))}
           </div>
-        )}
-
-        {!isWeek && (
+        ) : (
           <div className="rank-filters">
             <div className="rank-tabs" role="tablist" aria-label="난이도">
               <button

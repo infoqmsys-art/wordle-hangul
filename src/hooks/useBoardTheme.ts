@@ -3,6 +3,7 @@ import {
   DEFAULT_THEME,
   canUseTheme,
   clearThemeTrial,
+  consumeThemeTrialGame,
   isBoardThemeId,
   loadEquippedTheme,
   loadThemeTrial,
@@ -25,42 +26,28 @@ export function useBoardTheme(options: Options = {}) {
   )
   const [previewId, setPreviewId] = useState<BoardThemeId | null>(null)
   const [trial, setTrial] = useState<ThemeTrial | null>(() => loadThemeTrial())
-  const [now, setNow] = useState(() => Date.now())
 
-  // 클라우드 장착값 우선 동기화
   useEffect(() => {
     const cloud = options.equippedFromCloud
     if (cloud && isBoardThemeId(cloud)) {
-      setEquippedId(cloud)
-      saveEquippedTheme(cloud)
+      if (canUseTheme(cloud, ownedThemeIds, trial)) {
+        setEquippedId(cloud)
+        saveEquippedTheme(cloud)
+      }
     }
-  }, [options.equippedFromCloud])
+  }, [options.equippedFromCloud, ownedThemeIds, trial])
 
-  // 체험 만료 타이머
+  // 체험 종료 후 장착이 막히면 기본으로
   useEffect(() => {
-    if (!trial) return
-    const left = trial.expiresAt - Date.now()
-    if (left <= 0) {
-      clearThemeTrial()
-      setTrial(null)
-      return
+    if (!canUseTheme(equippedId, ownedThemeIds, trial)) {
+      setEquippedId(DEFAULT_THEME)
+      saveEquippedTheme(DEFAULT_THEME)
     }
-    const t = window.setTimeout(() => {
-      clearThemeTrial()
-      setTrial(null)
-      setNow(Date.now())
-    }, left + 50)
-    const tick = window.setInterval(() => setNow(Date.now()), 15_000)
-    return () => {
-      window.clearTimeout(t)
-      window.clearInterval(tick)
-    }
-  }, [trial])
+  }, [equippedId, ownedThemeIds, trial])
 
   const themeId = useMemo(
-    () =>
-      resolveActiveTheme(equippedId, ownedThemeIds, trial, previewId, now),
-    [equippedId, ownedThemeIds, trial, previewId, now],
+    () => resolveActiveTheme(equippedId, ownedThemeIds, trial, previewId),
+    [equippedId, ownedThemeIds, trial, previewId],
   )
 
   const equipLocal = useCallback(
@@ -88,17 +75,33 @@ export function useBoardTheme(options: Options = {}) {
     return next
   }, [])
 
-  const trialRemainingMs = trial ? Math.max(0, trial.expiresAt - now) : 0
+  const consumeTrialGame = useCallback(() => {
+    const current = loadThemeTrial()
+    if (!current) return
+    const next = consumeThemeTrialGame()
+    setTrial(next)
+    if (!next) {
+      clearThemeTrial()
+      setEquippedId((prev) => {
+        if (prev === current.themeId && !ownedThemeIds.includes(prev)) {
+          saveEquippedTheme(DEFAULT_THEME)
+          return DEFAULT_THEME
+        }
+        return prev
+      })
+    }
+  }, [ownedThemeIds])
 
   return {
     themeId,
     equippedId,
     previewId,
     trial,
-    trialRemainingMs,
+    trialGamesLeft: trial?.gamesLeft ?? 0,
     equipLocal,
     preview,
     startTrial,
+    consumeTrialGame,
     setEquippedId: (id: BoardThemeId) => {
       setEquippedId(id)
       saveEquippedTheme(id)

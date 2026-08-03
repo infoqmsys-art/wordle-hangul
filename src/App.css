@@ -2400,6 +2400,11 @@ button.tile {
   grid-template-columns: 1fr 1fr 1fr;
 }
 
+.rank-scope-tabs {
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 10px;
+}
+
 .rank-week-tabs {
   grid-template-columns: repeat(3, 1fr);
   margin-bottom: 8px;

@@ -8,7 +8,7 @@ import { HowTo } from './components/HowTo'
 import { Keyboard } from './components/Keyboard'
 import { ModeSelect } from './components/ModeSelect'
 import { ProfileModal } from './components/ProfileModal'
-import { RankingModal } from './components/RankingModal'
+import { RankingModal, type RankScope } from './components/RankingModal'
 import { MailboxModal } from './components/MailboxModal'
 import { ShopModal } from './components/ShopModal'
 import { ThemeModal } from './components/ThemeModal'
@@ -43,12 +43,10 @@ function App() {
   const [howto, setHowto] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [rankingOpen, setRankingOpen] = useState(false)
-  const [rankingVariant, setRankingVariant] = useState<'classic' | 'xp'>(
-    'classic',
-  )
+  const [rankingScope, setRankingScope] = useState<RankScope>('week')
 
-  const openRanking = (variant: 'classic' | 'xp' = 'classic') => {
-    setRankingVariant(variant)
+  const openRanking = (scope: RankScope = 'week') => {
+    setRankingScope(scope)
     setRankingOpen(true)
   }
   const [profileOpen, setProfileOpen] = useState(false)
@@ -111,6 +109,10 @@ function App() {
     }
     // 세션 복원이 아니라, 플레이 중 → 종료로 바뀐 순간에만 XP (지금부터)
     if (prev !== 'playing') return
+
+    // 테마 체험: 한 판이 끝나면 1판 차감
+    boardTheme.consumeTrialGame()
+
     if (!auth.user || !game.difficulty || !game.playMode) return
 
     let cancelled = false
@@ -142,10 +144,12 @@ function App() {
   }, [
     auth.user,
     patchProgress,
+    boardTheme.consumeTrialGame,
     game.status,
     game.difficulty,
     game.playMode,
     game.rows.length,
+    game.seconds,
     game.currentStreak,
   ])
 
@@ -288,7 +292,7 @@ function App() {
       busy={auth.busy}
       error={auth.error}
       trial={boardTheme.trial}
-      trialRemainingMs={boardTheme.trialRemainingMs}
+      trialGamesLeft={boardTheme.trialGamesLeft}
       onPreview={boardTheme.preview}
       onEquip={async (id) => {
         if (auth.user) {
@@ -396,20 +400,11 @@ function App() {
               <button
                 type="button"
                 onClick={() => {
-                  openRanking('classic')
+                  openRanking('week')
                   setMenuOpen(false)
                 }}
               >
-                단어킹
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  openRanking('xp')
-                  setMenuOpen(false)
-                }}
-              >
-                주간 랭킹
+                랭킹
               </button>
               <button
                 type="button"
@@ -481,7 +476,7 @@ function App() {
               played={homePlayed}
               wins={homeWins}
               onOpenProfile={openProfile}
-              onOpenRanking={() => openRanking('xp')}
+              onOpenRanking={() => openRanking('week')}
               onOpenShop={
                 auth.user
                   ? () => {
@@ -525,7 +520,7 @@ function App() {
         <RankingModal
           open={rankingOpen}
           onClose={() => setRankingOpen(false)}
-          variant={rankingVariant}
+          initialScope={rankingScope}
           initialDifficulty="easy"
           onOpenHistory={() => {
             setRankingOpen(false)
@@ -649,20 +644,11 @@ function App() {
             <button
               type="button"
               onClick={() => {
-                openRanking('classic')
+                openRanking('week')
                 setMenuOpen(false)
               }}
             >
-              단어킹
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                openRanking('xp')
-                setMenuOpen(false)
-              }}
-            >
-              주간 랭킹
+              랭킹
             </button>
             <button
               type="button"
@@ -1021,7 +1007,7 @@ function App() {
       <RankingModal
         open={rankingOpen}
         onClose={() => setRankingOpen(false)}
-        variant={rankingVariant}
+        initialScope={rankingScope}
         initialDifficulty={game.difficulty ?? 'easy'}
         onOpenHistory={() => {
           setRankingOpen(false)

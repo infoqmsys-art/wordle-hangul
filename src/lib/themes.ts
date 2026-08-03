@@ -16,7 +16,7 @@ export type BoardTheme = {
 }
 
 export const THEME_TOKEN_COST = 150
-export const THEME_TRIAL_MS = 15 * 60 * 1000
+export const THEME_TRIAL_GAMES = 3
 
 export const BOARD_THEMES: BoardTheme[] = [
   {
@@ -65,11 +65,11 @@ export const BOARD_THEMES: BoardTheme[] = [
 
 export const DEFAULT_THEME: BoardThemeId = 'default'
 const EQUIP_KEY = 'wordle-hangul-board-theme'
-const TRIAL_KEY = 'wordle-hangul-theme-trial'
+const TRIAL_KEY = 'wordle-hangul-theme-trial-v2'
 
 export type ThemeTrial = {
   themeId: BoardThemeId
-  expiresAt: number
+  gamesLeft: number
 }
 
 export function isBoardThemeId(value: string): value is BoardThemeId {
@@ -113,26 +113,27 @@ export function saveEquippedTheme(id: BoardThemeId) {
   }
 }
 
-export function loadThemeTrial(now = Date.now()): ThemeTrial | null {
+export function loadThemeTrial(): ThemeTrial | null {
   try {
     const raw = localStorage.getItem(TRIAL_KEY)
     if (!raw) return null
     const data = JSON.parse(raw) as ThemeTrial
-    if (!isBoardThemeId(data.themeId) || !data.expiresAt) return null
-    if (data.expiresAt <= now) {
+    if (!isBoardThemeId(data.themeId)) return null
+    const left = Math.floor(Number(data.gamesLeft ?? 0))
+    if (left <= 0) {
       localStorage.removeItem(TRIAL_KEY)
       return null
     }
-    return data
+    return { themeId: data.themeId, gamesLeft: left }
   } catch {
     return null
   }
 }
 
-export function startThemeTrial(themeId: BoardThemeId, now = Date.now()): ThemeTrial {
+export function startThemeTrial(themeId: BoardThemeId): ThemeTrial {
   const trial: ThemeTrial = {
     themeId,
-    expiresAt: now + THEME_TRIAL_MS,
+    gamesLeft: THEME_TRIAL_GAMES,
   }
   try {
     localStorage.setItem(TRIAL_KEY, JSON.stringify(trial))
@@ -150,15 +151,32 @@ export function clearThemeTrial() {
   }
 }
 
+/** 한 판 종료 시 체험 차감. 만료되면 null */
+export function consumeThemeTrialGame(): ThemeTrial | null {
+  const trial = loadThemeTrial()
+  if (!trial) return null
+  const nextLeft = trial.gamesLeft - 1
+  if (nextLeft <= 0) {
+    clearThemeTrial()
+    return null
+  }
+  const next: ThemeTrial = { themeId: trial.themeId, gamesLeft: nextLeft }
+  try {
+    localStorage.setItem(TRIAL_KEY, JSON.stringify(next))
+  } catch {
+    /* ignore */
+  }
+  return next
+}
+
 export function canUseTheme(
   themeId: BoardThemeId,
   ownedIds: readonly string[],
   trial: ThemeTrial | null,
-  now = Date.now(),
 ): boolean {
   if (themeId === DEFAULT_THEME) return true
   if (ownedIds.includes(themeId)) return true
-  if (trial && trial.themeId === themeId && trial.expiresAt > now) return true
+  if (trial && trial.themeId === themeId && trial.gamesLeft > 0) return true
   return false
 }
 
@@ -167,10 +185,9 @@ export function resolveActiveTheme(
   ownedIds: readonly string[],
   trial: ThemeTrial | null,
   preview: BoardThemeId | null,
-  now = Date.now(),
 ): BoardThemeId {
   if (preview && isBoardThemeId(preview)) return preview
-  if (canUseTheme(equipped, ownedIds, trial, now)) return equipped
-  if (trial && trial.expiresAt > now) return trial.themeId
+  if (canUseTheme(equipped, ownedIds, trial)) return equipped
+  if (trial && trial.gamesLeft > 0) return trial.themeId
   return DEFAULT_THEME
 }
