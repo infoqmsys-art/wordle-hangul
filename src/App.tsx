@@ -10,8 +10,7 @@ import { ModeSelect } from './components/ModeSelect'
 import { ProfileModal } from './components/ProfileModal'
 import { RankingModal, type RankScope } from './components/RankingModal'
 import { MailboxModal } from './components/MailboxModal'
-import { ShopModal } from './components/ShopModal'
-import { ThemeModal } from './components/ThemeModal'
+import { ShopModal, type ShopTab } from './components/ShopModal'
 import { DIFFICULTY_META } from './data/words'
 import { useAuth } from './hooks/useAuth'
 import { useBoardTheme } from './hooks/useBoardTheme'
@@ -53,8 +52,8 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [modePickerOpen, setModePickerOpen] = useState(false)
   const [shopOpen, setShopOpen] = useState(false)
+  const [shopTab, setShopTab] = useState<ShopTab>('hints')
   const [mailboxOpen, setMailboxOpen] = useState(false)
-  const [themeOpen, setThemeOpen] = useState(false)
   const [xpFlash, setXpFlash] = useState<XpFlash | null>(null)
   const [hintBusy, setHintBusy] = useState(false)
   const [hintPickMode, setHintPickMode] = useState(false)
@@ -281,42 +280,62 @@ function App() {
     />
   )
 
-  const themeModal = (
-    <ThemeModal
-      open={themeOpen}
-      themeId={boardTheme.themeId}
-      equippedId={boardTheme.equippedId}
-      ownedThemeIds={auth.user?.ownedThemeIds ?? ['default']}
+  const openShop = (tab: ShopTab = 'hints') => {
+    setShopTab(tab)
+    setShopOpen(true)
+  }
+
+  const shopModal = (
+    <ShopModal
+      open={shopOpen}
+      onClose={() => {
+        setShopOpen(false)
+        auth.clearError()
+      }}
+      initialTab={shopTab}
+      hints={auth.user?.hints ?? 0}
       tokens={auth.user?.tokens ?? 0}
+      lastDailyHintDate={auth.user?.lastDailyHintDate ?? ''}
       loggedIn={Boolean(auth.user)}
       busy={auth.busy}
       error={auth.error}
-      trial={boardTheme.trial}
-      trialGamesLeft={boardTheme.trialGamesLeft}
-      onPreview={boardTheme.preview}
-      onEquip={async (id) => {
-        if (auth.user) {
-          const ok = await auth.wearTheme(id)
-          if (ok) boardTheme.setEquippedId(id)
-          return
-        }
-        boardTheme.equipLocal(id)
-      }}
-      onBuy={async (id) => {
-        const ok = await auth.purchaseTheme(id)
-        if (ok) boardTheme.setEquippedId(id)
-        return ok
-      }}
-      onTrial={(id) => {
-        boardTheme.startTrial(id)
-      }}
-      onClose={() => {
-        setThemeOpen(false)
-        auth.clearError()
-      }}
+      onBuyHint={auth.buyItem}
+      onRefresh={auth.refreshEconomy}
       onNeedLogin={() => {
-        setThemeOpen(false)
+        setShopOpen(false)
         openProfile()
+      }}
+      theme={{
+        themeId: boardTheme.themeId,
+        equippedId: boardTheme.equippedId,
+        ownedThemeIds: auth.user?.ownedThemeIds ?? ['default'],
+        tokens: auth.user?.tokens ?? 0,
+        loggedIn: Boolean(auth.user),
+        busy: auth.busy,
+        error: auth.error,
+        trial: boardTheme.trial,
+        trialGamesLeft: boardTheme.trialGamesLeft,
+        onPreview: boardTheme.preview,
+        onEquip: async (id) => {
+          if (auth.user) {
+            const ok = await auth.wearTheme(id)
+            if (ok) boardTheme.setEquippedId(id)
+            return
+          }
+          boardTheme.equipLocal(id)
+        },
+        onBuy: async (id) => {
+          const ok = await auth.purchaseTheme(id)
+          if (ok) boardTheme.setEquippedId(id)
+          return ok
+        },
+        onTrial: (id) => {
+          boardTheme.startTrial(id)
+        },
+        onNeedLogin: () => {
+          setShopOpen(false)
+          openProfile()
+        },
       }}
     />
   )
@@ -372,9 +391,7 @@ function App() {
       <div className="app is-home" data-theme={themeAttr}>
         <header className="header">
           {headerAuthButton}
-          <div className="brand brand-home" aria-hidden>
-            <span className="brand-home-dot" />
-          </div>
+          <div className="brand brand-home" aria-hidden />
           <button
             type="button"
             className="icon-btn"
@@ -409,11 +426,11 @@ function App() {
               <button
                 type="button"
                 onClick={() => {
-                  setThemeOpen(true)
+                  openShop('hints')
                   setMenuOpen(false)
                 }}
               >
-                테마
+                상점
               </button>
               <button
                 type="button"
@@ -424,17 +441,6 @@ function App() {
               >
                 게임 방법
               </button>
-              {auth.user && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShopOpen(true)
-                    setMenuOpen(false)
-                  }}
-                >
-                  상점
-                </button>
-              )}
               {auth.user && (
                 <button
                   type="button"
@@ -477,13 +483,7 @@ function App() {
               wins={homeWins}
               onOpenProfile={openProfile}
               onOpenRanking={() => openRanking('week')}
-              onOpenShop={
-                auth.user
-                  ? () => {
-                      setShopOpen(true)
-                    }
-                  : undefined
-              }
+              onOpenShop={() => openShop('hints')}
               onOpenMailbox={
                 auth.user
                   ? () => {
@@ -491,7 +491,6 @@ function App() {
                     }
                   : undefined
               }
-              onOpenTheme={() => setThemeOpen(true)}
               onClaimReward={auth.user ? auth.claimReward : undefined}
               claimBusy={auth.busy}
             />
@@ -528,22 +527,6 @@ function App() {
           }}
         />
         {auth.user && (
-          <ShopModal
-            open={shopOpen}
-            onClose={() => {
-              setShopOpen(false)
-              auth.clearError()
-            }}
-            hints={auth.user.hints}
-            tokens={auth.user.tokens}
-            lastDailyHintDate={auth.user.lastDailyHintDate}
-            busy={auth.busy}
-            error={auth.error}
-            onBuy={auth.buyItem}
-            onRefresh={auth.refreshEconomy}
-          />
-        )}
-        {auth.user && (
           <MailboxModal
             open={mailboxOpen}
             onClose={() => {
@@ -556,7 +539,7 @@ function App() {
             onClaim={auth.claimMail}
           />
         )}
-        {themeModal}
+        {shopModal}
         {profileModal}
       </div>
     )
@@ -576,7 +559,7 @@ function App() {
       return
     }
     if (auth.user.hints < 1) {
-      setShopOpen(true)
+      openShop('hints')
       return
     }
     setHintConfirm(null)
@@ -653,11 +636,11 @@ function App() {
             <button
               type="button"
               onClick={() => {
-                setThemeOpen(true)
+                openShop('hints')
                 setMenuOpen(false)
               }}
             >
-              테마
+              상점
             </button>
             <button
               type="button"
@@ -668,17 +651,6 @@ function App() {
             >
               게임 방법
             </button>
-            {auth.user && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShopOpen(true)
-                  setMenuOpen(false)
-                }}
-              >
-                상점
-              </button>
-            )}
             {auth.user && (
               <button
                 type="button"
@@ -1015,22 +987,6 @@ function App() {
         }}
       />
       {auth.user && (
-        <ShopModal
-          open={shopOpen}
-          onClose={() => {
-            setShopOpen(false)
-            auth.clearError()
-          }}
-          hints={auth.user.hints}
-          tokens={auth.user.tokens}
-          lastDailyHintDate={auth.user.lastDailyHintDate}
-          busy={auth.busy}
-          error={auth.error}
-          onBuy={auth.buyItem}
-          onRefresh={auth.refreshEconomy}
-        />
-      )}
-      {auth.user && (
         <MailboxModal
           open={mailboxOpen}
           onClose={() => {
@@ -1043,7 +999,7 @@ function App() {
           onClaim={auth.claimMail}
         />
       )}
-      {themeModal}
+      {shopModal}
       {profileModal}
     </div>
   )

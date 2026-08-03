@@ -1,9 +1,5 @@
 import { useEffect, useState } from 'react'
-import {
-  MAIL_CATALOG,
-  unclaimedMail,
-  type MailItem,
-} from '../lib/mailbox'
+import { unclaimedMail, type MailItem } from '../lib/mailbox'
 
 type Props = {
   open: boolean
@@ -31,7 +27,6 @@ export function MailboxModal({
 }: Props) {
   const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const claimed = new Set(claimedMailIds)
   const pending = unclaimedMail(claimedMailIds)
 
   useEffect(() => {
@@ -83,23 +78,6 @@ export function MailboxModal({
           </ul>
         ) : (
           <p className="mail-empty">받을 우편이 없어요</p>
-        )}
-
-        {MAIL_CATALOG.some((m) => claimed.has(m.id)) && (
-          <div className="mail-claimed-block">
-            <p className="mail-claimed-label">받은 우편</p>
-            <ul className="mail-list mail-list-claimed">
-              {MAIL_CATALOG.filter((m) => claimed.has(m.id)).map((mail) => (
-                <li key={mail.id} className="mail-item is-claimed">
-                  <div>
-                    <strong>{mail.title}</strong>
-                    <p>{mail.body}</p>
-                  </div>
-                  <span className="week-reward-state">받음</span>
-                </li>
-              ))}
-            </ul>
-          </div>
         )}
 
         {(error || externalError || msg) && (

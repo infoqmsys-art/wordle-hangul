@@ -672,7 +672,7 @@ button.tile {
   font-size: 1rem;
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(255, 205, 0, 0.28);
+  box-shadow: 0 1px 2px rgba(30, 40, 70, 0.08);
 }
 
 .cta:active:not(:disabled) {
@@ -1601,7 +1601,7 @@ button.tile {
 .btn-primary {
   background: var(--accent);
   color: var(--accent-ink);
-  box-shadow: 0 4px 12px rgba(255, 205, 0, 0.22);
+  box-shadow: 0 1px 2px rgba(30, 40, 70, 0.08);
 }
 
 .btn-primary.full {
@@ -1879,10 +1879,7 @@ button.tile {
 }
 
 .app.is-home {
-  background:
-    radial-gradient(ellipse 110% 70% at 50% -20%, #ffe08a40 0%, transparent 55%),
-    radial-gradient(circle at 90% 12%, #3b6fd818 0 36px, transparent 37px),
-    var(--bg);
+  background: var(--bg);
   padding-bottom: 0;
 }
 
@@ -2986,6 +2983,47 @@ button.tile {
   margin-bottom: 12px;
 }
 
+.shop-tabs {
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.shop-modal {
+  height: min(85svh, 560px);
+  max-height: min(85svh, 560px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.shop-login-gate {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.theme-shop-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.theme-shop-sub {
+  flex-shrink: 0;
+  margin-bottom: 8px !important;
+}
+
 .shop-balance {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3056,6 +3094,9 @@ button.tile {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 .shop-item {
@@ -3208,18 +3249,14 @@ button.tile {
   -webkit-overflow-scrolling: touch;
 }
 
-.theme-modal {
-  height: min(85svh, 560px);
-  max-height: min(85svh, 560px);
-  overflow: hidden;
-}
-
 .theme-modal h2,
-.theme-modal .modal-sub {
+.theme-modal .modal-sub,
+.shop-modal h2 {
   flex-shrink: 0;
 }
 
-.theme-modal .btn-primary.full {
+.theme-modal .btn-primary.full,
+.shop-modal .btn-primary.full {
   flex-shrink: 0;
 }
 

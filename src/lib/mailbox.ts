@@ -25,6 +25,13 @@ export const MAIL_CATALOG: MailItem[] = [
     hints: 1,
     tokens: 0,
   },
+  {
+    id: 'patch-2026-08-03-tokens-10',
+    title: '패치 보상',
+    body: '초크백 테마·상점 정리 패치 기념으로 초크가루 10개를 드려요.',
+    hints: 0,
+    tokens: 10,
+  },
 ]
 
 export function parseClaimedMailIds(raw: unknown): string[] {
