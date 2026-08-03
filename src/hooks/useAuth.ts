@@ -192,7 +192,14 @@ export function useAuth() {
     setError(null)
     try {
       const progress = await consumeHint(user.uid, user.nickname)
-      setUser(applyProgressToProfile(user, progress))
+      // 힌트만 바뀌므로 테마 장착/보유는 클라이언트 값 유지
+      setUser(
+        applyProgressToProfile(user, {
+          ...progress,
+          ownedThemeIds: user.ownedThemeIds,
+          equippedThemeId: user.equippedThemeId,
+        }),
+      )
       return progress
     } catch (err) {
       setError(err instanceof Error ? err.message : '힌트 사용에 실패했어요')

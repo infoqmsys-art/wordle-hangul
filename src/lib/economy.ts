@@ -219,9 +219,14 @@ export async function consumeHint(
     hints: synced.progress.hints - 1,
   }
 
+  // 힌트만 갱신 — 테마 필드를 기본값으로 덮어쓰지 않음
   await setDoc(
     doc(getDb(), USERS, uid),
-    economyPayload(nickname, progress),
+    {
+      nickname: nickname.slice(0, 20),
+      hints: progress.hints,
+      updatedAt: serverTimestamp(),
+    },
     { merge: true },
   )
 

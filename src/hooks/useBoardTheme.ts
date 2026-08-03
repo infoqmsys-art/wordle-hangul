@@ -81,24 +81,30 @@ export function useBoardTheme(options: Options = {}) {
     setEquippedId(next.equippedId)
   }, [accountKey, ownedThemeIds, options.equippedFromCloud])
 
-  // 같은 계정에서 클라우드 장착/보유 목록이 갱신될 때 (구매·장착 후)
+  // 같은 계정에서 클라우드 장착이 바뀌면 반영 (구매·장착)
+  // 단, 클라우드 'default'로는 로컬 체험/보유 장착을 덮지 않음
+  // (힌트·경제 동기화 때 equippedThemeId가 default로 내려오는 경우 방지)
   useEffect(() => {
     if (accountRef.current !== accountKey) return
     const cloud = options.equippedFromCloud
     if (!cloud || !isBoardThemeId(cloud)) return
-    if (cloud !== DEFAULT_THEME && !ownedThemeIds.includes(cloud)) return
 
-    const local = loadEquippedTheme(accountKey)
-    const localTrialLeft = trialGamesLeft(trialStore, local)
-    // 체험 중인 테마를 기본/다른 장착으로 덮지 않음
-    if (
-      localTrialLeft > 0 &&
-      !ownedThemeIds.includes(local) &&
-      cloud !== local
-    ) {
+    if (cloud === DEFAULT_THEME) {
+      setEquippedId((local) => {
+        if (local === DEFAULT_THEME) return local
+        if (
+          ownedThemeIds.includes(local) ||
+          trialGamesLeft(trialStore, local) > 0
+        ) {
+          return local
+        }
+        saveEquippedTheme(DEFAULT_THEME, accountKey)
+        return DEFAULT_THEME
+      })
       return
     }
 
+    if (!ownedThemeIds.includes(cloud)) return
     setEquippedId(cloud)
     saveEquippedTheme(cloud, accountKey)
   }, [accountKey, options.equippedFromCloud, ownedThemeIds, trialStore])
