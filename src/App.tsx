@@ -110,6 +110,7 @@ function App() {
       nickname: auth.user.nickname,
       won: game.status === 'won',
       attempts: game.rows.length,
+      seconds: game.seconds,
       difficulty: game.difficulty,
       playMode: game.playMode,
       streakAfter: game.currentStreak,
@@ -359,7 +360,7 @@ function App() {
                   setMenuOpen(false)
                 }}
               >
-                XP 랭킹
+                주간 랭킹
               </button>
               <button
                 type="button"
@@ -601,7 +602,7 @@ function App() {
                 setMenuOpen(false)
               }}
             >
-              XP 랭킹
+              주간 랭킹
             </button>
             <button
               type="button"

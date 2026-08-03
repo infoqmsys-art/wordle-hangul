@@ -2260,8 +2260,8 @@ button.tile {
   grid-template-columns: 1fr 1fr 1fr;
 }
 
-.rank-mode-tabs[aria-label='XP 기준'] {
-  grid-template-columns: 1fr 1fr;
+.rank-week-tabs {
+  grid-template-columns: repeat(4, 1fr);
   margin-bottom: 8px;
 }
 
@@ -2489,18 +2489,6 @@ button.tile {
   display: block;
 }
 
-.hold-disc.is-tinted {
-  background: var(--hold-tint, #f0f2f7);
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--hold-tint) 55%, #fff),
-    0 1px 3px rgba(30, 40, 70, 0.18);
-}
-
-.hold-disc.is-tinted img {
-  mix-blend-mode: luminosity;
-  opacity: 0.92;
-}
-
 .hold-sm .hold-disc {
   width: 26px;
   height: 26px;
@@ -2614,14 +2602,6 @@ button.tile {
 .hold-trail-disc.is-current {
   transform: scale(1.12);
   box-shadow: 0 0 0 2px var(--blue-border);
-}
-
-.hold-trail-disc.is-tinted {
-  background: var(--hold-tint, #eef1f6);
-}
-
-.hold-trail-disc.is-tinted img {
-  mix-blend-mode: luminosity;
 }
 
 .week-reward-card {

@@ -38,6 +38,9 @@ export type UserProfile = {
   weekKey: string
   weekXp: number
   weekWins: number
+  weekPlays: number
+  weekBestAttempts: number
+  weekBestSeconds: number
   lastDailyBonusDate: string
   pendingWeekReward: PendingWeekReward | null
   hints: number
@@ -58,6 +61,9 @@ function progressFields(p: UserProgress) {
     weekKey: p.weekKey,
     weekXp: p.weekXp,
     weekWins: p.weekWins,
+    weekPlays: p.weekPlays,
+    weekBestAttempts: p.weekBestAttempts,
+    weekBestSeconds: p.weekBestSeconds,
     lastDailyBonusDate: p.lastDailyBonusDate,
     pendingWeekReward: p.pendingWeekReward,
     hints: p.hints,
@@ -420,6 +426,9 @@ export async function updateNickname(
     weekKey: current.weekKey,
     weekXp: current.weekXp,
     weekWins: current.weekWins,
+    weekPlays: current.weekPlays ?? 0,
+    weekBestAttempts: current.weekBestAttempts ?? 0,
+    weekBestSeconds: current.weekBestSeconds ?? 0,
     lastDailyBonusDate: current.lastDailyBonusDate,
     pendingWeekReward: current.pendingWeekReward,
     hints: current.hints,

@@ -163,10 +163,7 @@ export function HomeDashboard({
           <section className="home-week-chip" aria-label="이번 주">
             <span>이번 주</span>
             <strong>
-              {displayWeekStat(profile.weekKey, profile.weekXp).toLocaleString(
-                'ko-KR',
-              )}{' '}
-              XP
+              {displayWeekStat(profile.weekKey, profile.weekPlays ?? 0)}판
             </strong>
             <span className="home-week-sep">·</span>
             <strong>

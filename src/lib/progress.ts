@@ -38,8 +38,15 @@ export type UserProgress = {
   xp: number
   level: number
   weekKey: string
+  /** 이번 주 획득 XP (레벨용, 주간 랭킹 점수 아님) */
   weekXp: number
   weekWins: number
+  /** 이번 주 플레이 판수 (승패 포함) */
+  weekPlays: number
+  /** 이번 주 승리 중 최소 시도 (없으면 0) */
+  weekBestAttempts: number
+  /** 이번 주 승리 중 최단 초 (없으면 0) */
+  weekBestSeconds: number
   lastDailyBonusDate: string
   pendingWeekReward: PendingWeekReward | null
   /** 보유 힌트 (계정, 쌓임) */
@@ -60,6 +67,9 @@ export const emptyProgress = (): UserProgress => ({
   weekKey: getWeekKey(),
   weekXp: 0,
   weekWins: 0,
+  weekPlays: 0,
+  weekBestAttempts: 0,
+  weekBestSeconds: 0,
   lastDailyBonusDate: '',
   pendingWeekReward: null,
   hints: 0,
@@ -93,6 +103,9 @@ export function parseUserProgress(
     weekKey: String(data.weekKey ?? '') || getWeekKey(),
     weekXp: Math.max(0, Number(data.weekXp ?? 0)),
     weekWins: Math.max(0, Number(data.weekWins ?? 0)),
+    weekPlays: Math.max(0, Number(data.weekPlays ?? 0)),
+    weekBestAttempts: Math.max(0, Number(data.weekBestAttempts ?? 0)),
+    weekBestSeconds: Math.max(0, Number(data.weekBestSeconds ?? 0)),
     lastDailyBonusDate: String(data.lastDailyBonusDate ?? ''),
     pendingWeekReward: parsePending(data.pendingWeekReward),
     hints: Math.max(0, Number(data.hints ?? 0)),
@@ -114,6 +127,9 @@ function progressWriteFields(progress: UserProgress) {
     weekKey: progress.weekKey,
     weekXp: progress.weekXp,
     weekWins: progress.weekWins,
+    weekPlays: progress.weekPlays,
+    weekBestAttempts: progress.weekBestAttempts,
+    weekBestSeconds: progress.weekBestSeconds,
     lastDailyBonusDate: progress.lastDailyBonusDate,
     pendingWeekReward: progress.pendingWeekReward,
     hints: progress.hints,
@@ -124,13 +140,21 @@ function progressWriteFields(progress: UserProgress) {
   }
 }
 
+/** 주간 랭킹 기준 (월 09:00 리셋) */
+export type WeeklyRankMode = 'plays' | 'attempts' | 'fastest'
+
 export type WeeklyRankEntry = {
   uid: string
   nickname: string
   weekXp: number
   weekWins: number
+  weekPlays: number
+  weekBestAttempts: number
+  weekBestSeconds: number
   rank: number
   updatedAt: number
+  score: number
+  scoreLabel: string
 }
 
 /** 누적 XP 유저 랭킹 한 줄 */
@@ -197,7 +221,15 @@ type WeekEntryRaw = {
   nickname: string
   weekXp: number
   weekWins: number
+  weekPlays: number
+  weekBestAttempts: number
+  weekBestSeconds: number
   updatedAt: number
+}
+
+function parseBest(raw: unknown): number {
+  const n = Number(raw ?? 0)
+  return Number.isFinite(n) && n > 0 ? n : 0
 }
 
 async function loadWeekEntriesRaw(weekKey: string): Promise<WeekEntryRaw[]> {
@@ -213,6 +245,9 @@ async function loadWeekEntriesRaw(weekKey: string): Promise<WeekEntryRaw[]> {
         nickname: String(data.nickname ?? '').trim() || '플레이어',
         weekXp: Math.max(0, Number(data.weekXp ?? 0)),
         weekWins: Math.max(0, Number(data.weekWins ?? 0)),
+        weekPlays: Math.max(0, Number(data.weekPlays ?? 0)),
+        weekBestAttempts: parseBest(data.weekBestAttempts),
+        weekBestSeconds: parseBest(data.weekBestSeconds),
         updatedAt: Number(data.updatedAt ?? 0),
       }
     })
@@ -226,6 +261,7 @@ type PracticeRec = {
   nickname: string
   won: boolean
   attempts: number
+  seconds: number
   difficulty: Difficulty
   savedAt: number
 }
@@ -248,10 +284,8 @@ async function fetchPracticeRecords(): Promise<PracticeRec[]> {
   const out: PracticeRec[] = []
   for (const d of snap.docs) {
     const data = d.data() as Record<string, unknown>
-    if (data.playMode === 'daily') continue
     const uid = data.uid ? String(data.uid) : ''
     const nickname = String(data.name ?? '').trim()
-    // 비로그인 기록은 주간 XP 집계에서 제외
     if (!uid || !nickname) continue
     const wordLength = Number(data.wordLength ?? 5)
     const difficulty: Difficulty =
@@ -266,6 +300,7 @@ async function fetchPracticeRecords(): Promise<PracticeRec[]> {
       nickname,
       won,
       attempts: Math.max(0, Number(data.attempts ?? 0)),
+      seconds: Math.max(0, Number(data.seconds ?? 0)),
       difficulty,
       savedAt: Number(data.savedAt ?? 0),
     })
@@ -273,7 +308,7 @@ async function fetchPracticeRecords(): Promise<PracticeRec[]> {
   return out
 }
 
-/** 해당 주(월 09:00 KST~) 연습 기록으로 weekXp 집계 */
+/** 해당 주(월 09:00 KST~) 연습 기록으로 주간 스탯 집계 */
 function aggregateWeekFromRecords(
   records: PracticeRec[],
   weekKey: string,
@@ -296,14 +331,30 @@ function aggregateWeekFromRecords(
     let streak = 0
     let weekXp = 0
     let weekWins = 0
+    let weekPlays = 0
+    let weekBestAttempts = 0
+    let weekBestSeconds = 0
     let nickname = '플레이어'
     let updatedAt = 0
     for (const r of sorted) {
       nickname = r.nickname || nickname
       updatedAt = Math.max(updatedAt, r.savedAt)
+      weekPlays += 1
       if (r.won) {
         streak += 1
         weekWins += 1
+        if (r.attempts > 0) {
+          weekBestAttempts =
+            weekBestAttempts === 0
+              ? r.attempts
+              : Math.min(weekBestAttempts, r.attempts)
+        }
+        if (r.seconds > 0) {
+          weekBestSeconds =
+            weekBestSeconds === 0
+              ? r.seconds
+              : Math.min(weekBestSeconds, r.seconds)
+        }
       } else {
         streak = 0
       }
@@ -316,11 +367,26 @@ function aggregateWeekFromRecords(
         dailyBonusAlready: true,
       }).xp
     }
-    if (weekXp > 0) {
-      out.push({ uid, nickname, weekXp, weekWins, updatedAt })
+    if (weekPlays > 0) {
+      out.push({
+        uid,
+        nickname,
+        weekXp,
+        weekWins,
+        weekPlays,
+        weekBestAttempts,
+        weekBestSeconds,
+        updatedAt,
+      })
     }
   }
   return out
+}
+
+function mergeBest(a: number, b: number): number {
+  if (a <= 0) return b
+  if (b <= 0) return a
+  return Math.min(a, b)
 }
 
 function mergeWeekEntries(a: WeekEntryRaw[], b: WeekEntryRaw[]): WeekEntryRaw[] {
@@ -337,6 +403,9 @@ function mergeWeekEntries(a: WeekEntryRaw[], b: WeekEntryRaw[]): WeekEntryRaw[] 
       nickname: e.nickname || prev.nickname,
       weekXp: Math.max(prev.weekXp, e.weekXp),
       weekWins: Math.max(prev.weekWins, e.weekWins),
+      weekPlays: Math.max(prev.weekPlays, e.weekPlays),
+      weekBestAttempts: mergeBest(prev.weekBestAttempts, e.weekBestAttempts),
+      weekBestSeconds: mergeBest(prev.weekBestSeconds, e.weekBestSeconds),
       updatedAt: Math.max(prev.updatedAt, e.updatedAt),
     })
   }
@@ -356,16 +425,18 @@ async function writeWeeklyEntry(
   weekKey: string,
   uid: string,
   nickname: string,
-  weekXp: number,
-  weekWins: number,
+  entry: Omit<WeekEntryRaw, 'uid' | 'nickname' | 'updatedAt'>,
 ) {
   await setDoc(
     doc(getDb(), WEEKLY, weekKey, 'entries', uid),
     {
       uid,
       nickname: nickname.slice(0, 20),
-      weekXp,
-      weekWins,
+      weekXp: entry.weekXp,
+      weekWins: entry.weekWins,
+      weekPlays: entry.weekPlays,
+      weekBestAttempts: entry.weekBestAttempts,
+      weekBestSeconds: entry.weekBestSeconds,
       updatedAt: Date.now(),
       savedAt: serverTimestamp(),
     },
@@ -373,26 +444,78 @@ async function writeWeeklyEntry(
   )
 }
 
-function rankWeekEntries(entries: WeekEntryRaw[]): WeeklyRankEntry[] {
-  const participants = entries.filter((e) => e.weekXp > 0)
-  // 동점: weekXp만으로 순위. 표시 순서는 weekXp desc → weekWins desc
+function formatWeekSeconds(total: number): string {
+  const s = Math.max(0, Math.floor(total))
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  if (m <= 0) return `${r}초`
+  return `${m}분 ${r}초`
+}
+
+function rankWeekEntries(
+  entries: WeekEntryRaw[],
+  mode: WeeklyRankMode = 'plays',
+): WeeklyRankEntry[] {
+  if (mode === 'plays') {
+    const participants = entries.filter((e) => e.weekPlays > 0)
+    const ordered = [...participants].sort((a, b) => {
+      if (b.weekPlays !== a.weekPlays) return b.weekPlays - a.weekPlays
+      if (b.weekWins !== a.weekWins) return b.weekWins - a.weekWins
+      return b.updatedAt - a.updatedAt
+    })
+    return assignCompetitionRanks(ordered, (e) => e.weekPlays, true).map(
+      ({ item, rank }) => ({
+        ...item,
+        rank,
+        score: item.weekPlays,
+        scoreLabel: `${item.weekPlays}판`,
+      }),
+    )
+  }
+
+  if (mode === 'attempts') {
+    const participants = entries.filter((e) => e.weekBestAttempts > 0)
+    const ordered = [...participants].sort((a, b) => {
+      if (a.weekBestAttempts !== b.weekBestAttempts) {
+        return a.weekBestAttempts - b.weekBestAttempts
+      }
+      return b.updatedAt - a.updatedAt
+    })
+    return assignCompetitionRanks(
+      ordered,
+      (e) => e.weekBestAttempts,
+      false,
+    ).map(({ item, rank }) => ({
+      ...item,
+      rank,
+      score: item.weekBestAttempts,
+      scoreLabel: `${item.weekBestAttempts}회`,
+    }))
+  }
+
+  const participants = entries.filter((e) => e.weekBestSeconds > 0)
   const ordered = [...participants].sort((a, b) => {
-    if (b.weekXp !== a.weekXp) return b.weekXp - a.weekXp
-    if (b.weekWins !== a.weekWins) return b.weekWins - a.weekWins
+    if (a.weekBestSeconds !== b.weekBestSeconds) {
+      return a.weekBestSeconds - b.weekBestSeconds
+    }
     return b.updatedAt - a.updatedAt
   })
-  const ranked = assignCompetitionRanks(ordered, (e) => e.weekXp, true)
-  return ranked.map(({ item, rank }) => ({
-    ...item,
-    rank,
-  }))
+  return assignCompetitionRanks(ordered, (e) => e.weekBestSeconds, false).map(
+    ({ item, rank }) => ({
+      ...item,
+      rank,
+      score: item.weekBestSeconds,
+      scoreLabel: formatWeekSeconds(item.weekBestSeconds),
+    }),
+  )
 }
 
 export async function loadWeeklyRanking(
   weekKey: string = getWeekKey(),
+  mode: WeeklyRankMode = 'plays',
 ): Promise<WeeklyRankEntry[]> {
   const entries = await loadWeekEntries(weekKey)
-  return rankWeekEntries(entries)
+  return rankWeekEntries(entries, mode)
 }
 
 async function buildPendingForWeek(
@@ -403,7 +526,11 @@ async function buildPendingForWeek(
   const expiresAt = getClaimExpiresAt(settledWeekKey)
   if (nowMs >= expiresAt) return null
 
-  const ranked = rankWeekEntries(await loadWeekEntries(settledWeekKey))
+  // 주간 보상은 판수 순위 기준
+  const ranked = rankWeekEntries(
+    await loadWeekEntries(settledWeekKey),
+    'plays',
+  )
   const mine = ranked.find((e) => e.uid === uid)
   if (!mine) return null
 
@@ -421,7 +548,7 @@ async function buildPendingForWeek(
 
 /**
  * 주 전환·만료 정리. 로그인 유저 문서와 동기화.
- * 이번 주(월 09:00~) 연습 기록이 weekXp보다 많으면 랭킹에 반영.
+ * 이번 주(월 09:00~) 연습 기록이 있으면 랭킹에 반영.
  */
 export async function syncWeekProgress(
   uid: string,
@@ -437,7 +564,6 @@ export async function syncWeekProgress(
   const currentWeek = getWeekKey(now)
   let changed = false
 
-  // 만료된 미수령 보상 제거
   if (isRewardExpired(progress.pendingWeekReward, now)) {
     progress = { ...progress, pendingWeekReward: null }
     changed = true
@@ -445,10 +571,9 @@ export async function syncWeekProgress(
 
   if (progress.weekKey !== currentWeek) {
     const prevKey = progress.weekKey
-    const participated = progress.weekXp > 0
+    const participated = progress.weekPlays > 0 || progress.weekXp > 0
     let pending = progress.pendingWeekReward
 
-    // 지난 참여 주 정산 (이미 해당 주 pending이 있거나, 미수령 보상이 있으면 유지)
     if (participated && prevKey) {
       const hasForPrev = pending?.weekKey === prevKey
       if (!hasForPrev && !isRewardClaimable(pending, now)) {
@@ -462,42 +587,56 @@ export async function syncWeekProgress(
       weekKey: currentWeek,
       weekXp: 0,
       weekWins: 0,
+      weekPlays: 0,
+      weekBestAttempts: 0,
+      weekBestSeconds: 0,
       pendingWeekReward: pending,
       level: levelFromTotalXp(progress.xp),
     }
     changed = true
   }
 
-  // 7/27(월 09:00)~ 연습 기록을 이번 주 랭킹에 소급 반영 (레벨 XP는 그대로)
   try {
     const fromRecords = aggregateWeekFromRecords(
       await fetchPracticeRecords(),
       currentWeek,
     ).find((e) => e.uid === uid)
-    if (fromRecords && fromRecords.weekXp > progress.weekXp) {
+    if (
+      fromRecords &&
+      (fromRecords.weekPlays > progress.weekPlays ||
+        fromRecords.weekXp > progress.weekXp)
+    ) {
       progress = {
         ...progress,
         weekKey: currentWeek,
-        weekXp: fromRecords.weekXp,
+        weekXp: Math.max(progress.weekXp, fromRecords.weekXp),
         weekWins: Math.max(progress.weekWins, fromRecords.weekWins),
+        weekPlays: Math.max(progress.weekPlays, fromRecords.weekPlays),
+        weekBestAttempts: mergeBest(
+          progress.weekBestAttempts,
+          fromRecords.weekBestAttempts,
+        ),
+        weekBestSeconds: mergeBest(
+          progress.weekBestSeconds,
+          fromRecords.weekBestSeconds,
+        ),
       }
       changed = true
-      await writeWeeklyEntry(
-        currentWeek,
-        uid,
-        nickname,
-        progress.weekXp,
-        progress.weekWins,
-      )
-    } else if (progress.weekXp > 0) {
-      // 이미 있는 주간 XP도 랭킹 문서에 보장
-      await writeWeeklyEntry(
-        currentWeek,
-        uid,
-        nickname,
-        progress.weekXp,
-        progress.weekWins,
-      )
+      await writeWeeklyEntry(currentWeek, uid, nickname, {
+        weekXp: progress.weekXp,
+        weekWins: progress.weekWins,
+        weekPlays: progress.weekPlays,
+        weekBestAttempts: progress.weekBestAttempts,
+        weekBestSeconds: progress.weekBestSeconds,
+      })
+    } else if (progress.weekPlays > 0 || progress.weekXp > 0) {
+      await writeWeeklyEntry(currentWeek, uid, nickname, {
+        weekXp: progress.weekXp,
+        weekWins: progress.weekWins,
+        weekPlays: progress.weekPlays,
+        weekBestAttempts: progress.weekBestAttempts,
+        weekBestSeconds: progress.weekBestSeconds,
+      })
     }
   } catch {
     /* 기록 집계 실패해도 동기화는 계속 */
@@ -523,6 +662,7 @@ export type AwardXpInput = {
   nickname: string
   won: boolean
   attempts: number
+  seconds: number
   difficulty: Difficulty
   playMode: 'daily' | 'practice'
   streakAfter: number
@@ -564,9 +704,26 @@ export async function awardMatchXp(
   const xp = prev.xp + gained
   const level = levelFromTotalXp(xp)
   const weekKey = getWeekKey()
-  const weekXp = (prev.weekKey === weekKey ? prev.weekXp : 0) + gained
-  const weekWins =
-    (prev.weekKey === weekKey ? prev.weekWins : 0) + (input.won ? 1 : 0)
+  const sameWeek = prev.weekKey === weekKey
+  const weekXp = (sameWeek ? prev.weekXp : 0) + gained
+  const weekWins = (sameWeek ? prev.weekWins : 0) + (input.won ? 1 : 0)
+  const weekPlays = (sameWeek ? prev.weekPlays : 0) + 1
+  let weekBestAttempts = sameWeek ? prev.weekBestAttempts : 0
+  let weekBestSeconds = sameWeek ? prev.weekBestSeconds : 0
+  if (input.won) {
+    if (input.attempts > 0) {
+      weekBestAttempts =
+        weekBestAttempts === 0
+          ? input.attempts
+          : Math.min(weekBestAttempts, input.attempts)
+    }
+    if (input.seconds > 0) {
+      weekBestSeconds =
+        weekBestSeconds === 0
+          ? input.seconds
+          : Math.min(weekBestSeconds, input.seconds)
+    }
+  }
   const tokensGained = tokensForMatch({
     won: input.won,
     playMode: input.playMode,
@@ -579,6 +736,9 @@ export async function awardMatchXp(
     weekKey,
     weekXp,
     weekWins,
+    weekPlays,
+    weekBestAttempts,
+    weekBestSeconds,
     lastDailyBonusDate: dailyBonusUsed ? today : prev.lastDailyBonusDate,
     tokens: prev.tokens + tokensGained,
   }
@@ -593,13 +753,13 @@ export async function awardMatchXp(
     { merge: true },
   )
 
-  await writeWeeklyEntry(
-    weekKey,
-    input.uid,
-    input.nickname,
-    progress.weekXp,
-    progress.weekWins,
-  )
+  await writeWeeklyEntry(weekKey, input.uid, input.nickname, {
+    weekXp: progress.weekXp,
+    weekWins: progress.weekWins,
+    weekPlays: progress.weekPlays,
+    weekBestAttempts: progress.weekBestAttempts,
+    weekBestSeconds: progress.weekBestSeconds,
+  })
 
   return {
     progress,

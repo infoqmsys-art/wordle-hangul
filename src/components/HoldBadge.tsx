@@ -1,4 +1,3 @@
-import type { CSSProperties } from 'react'
 import { MAX_LEVEL, getHold, holdImageSrc } from '../lib/levels'
 
 type Props = {
@@ -18,17 +17,8 @@ export function HoldBadge({
 }: Props) {
   const hold = getHold(level)
   const src = holdImageSrc(level)
-  const tinted = hold.level > 11
   const disc = (
-    <span
-      className={`hold-disc hold-disc-img${tinted ? ' is-tinted' : ''}`}
-      style={
-        tinted
-          ? ({ '--hold-tint': hold.color } as CSSProperties)
-          : undefined
-      }
-      aria-hidden={!onClick}
-    >
+    <span className="hold-disc hold-disc-img" aria-hidden={!onClick}>
       <img src={src} alt="" draggable={false} />
     </span>
   )
@@ -63,18 +53,12 @@ export function HoldTrail({ currentLevel }: { currentLevel: number }) {
         const level = i + 1
         const hold = getHold(level)
         const reached = level <= currentLevel
-        const tinted = hold.level > 11
         return (
           <span
             key={level}
             className={`hold-trail-disc${reached ? ' is-reached' : ''}${
               level === currentLevel ? ' is-current' : ''
-            }${tinted ? ' is-tinted' : ''}`}
-            style={
-              tinted
-                ? ({ '--hold-tint': hold.color } as CSSProperties)
-                : undefined
-            }
+            }`}
             title={`Lv.${level} ${hold.name}`}
           >
             <img
