@@ -29,12 +29,14 @@ export function useBoardTheme(options: Options = {}) {
 
   useEffect(() => {
     const cloud = options.equippedFromCloud
-    if (cloud && isBoardThemeId(cloud)) {
-      if (canUseTheme(cloud, ownedThemeIds, trial)) {
-        setEquippedId(cloud)
-        saveEquippedTheme(cloud)
-      }
-    }
+    if (!cloud || !isBoardThemeId(cloud)) return
+
+    // 로컬 3판 체험 중에는 클라우드 장착값으로 덮지 않음
+    if (trial && trial.gamesLeft > 0) return
+
+    if (!canUseTheme(cloud, ownedThemeIds, trial)) return
+    setEquippedId(cloud)
+    saveEquippedTheme(cloud)
   }, [options.equippedFromCloud, ownedThemeIds, trial])
 
   // 체험 종료 후 장착이 막히면 기본으로
@@ -92,6 +94,11 @@ export function useBoardTheme(options: Options = {}) {
     }
   }, [ownedThemeIds])
 
+  const endTrial = useCallback(() => {
+    clearThemeTrial()
+    setTrial(null)
+  }, [])
+
   return {
     themeId,
     equippedId,
@@ -102,6 +109,7 @@ export function useBoardTheme(options: Options = {}) {
     preview,
     startTrial,
     consumeTrialGame,
+    endTrial,
     setEquippedId: (id: BoardThemeId) => {
       setEquippedId(id)
       saveEquippedTheme(id)

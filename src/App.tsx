@@ -317,7 +317,9 @@ function App() {
         trialGamesLeft: boardTheme.trialGamesLeft,
         onPreview: boardTheme.preview,
         onEquip: async (id) => {
-          if (auth.user) {
+          const owned = auth.user?.ownedThemeIds ?? []
+          // 보유 테마만 클라우드 장착. 체험 테마는 로컬 장착
+          if (auth.user && owned.includes(id)) {
             const ok = await auth.wearTheme(id)
             if (ok) boardTheme.setEquippedId(id)
             return
@@ -326,7 +328,10 @@ function App() {
         },
         onBuy: async (id) => {
           const ok = await auth.purchaseTheme(id)
-          if (ok) boardTheme.setEquippedId(id)
+          if (ok) {
+            boardTheme.endTrial()
+            boardTheme.setEquippedId(id)
+          }
           return ok
         },
         onTrial: (id) => {

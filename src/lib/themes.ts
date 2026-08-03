@@ -187,7 +187,13 @@ export function resolveActiveTheme(
   preview: BoardThemeId | null,
 ): BoardThemeId {
   if (preview && isBoardThemeId(preview)) return preview
+  // 체험 중이면 체험 테마를 우선 (클라우드/기본 장착에 가려지지 않게)
+  if (trial && trial.gamesLeft > 0) {
+    if (equipped === trial.themeId) return trial.themeId
+    if (!ownedIds.includes(equipped) || equipped === DEFAULT_THEME) {
+      return trial.themeId
+    }
+  }
   if (canUseTheme(equipped, ownedIds, trial)) return equipped
-  if (trial && trial.gamesLeft > 0) return trial.themeId
   return DEFAULT_THEME
 }
