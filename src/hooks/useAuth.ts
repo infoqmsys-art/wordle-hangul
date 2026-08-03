@@ -11,6 +11,7 @@ import {
   type UserProfile,
 } from '../lib/auth'
 import { buyShopItem, consumeHint, syncEconomy } from '../lib/economy'
+import { getWeekKey } from '../lib/levels'
 import { claimMailItem } from '../lib/mailbox'
 import { claimWeekReward, type UserProgress } from '../lib/progress'
 
@@ -139,6 +140,32 @@ export function useAuth() {
       /* offline */
     }
   }, [user])
+
+  // 월 09:00 주 전환 후 탭이 열려 있어도 동기화·정산
+  useEffect(() => {
+    if (!user) return
+
+    let last = 0
+    const sync = () => {
+      const now = Date.now()
+      if (now - last < 4000) return
+      last = now
+      void refreshEconomy()
+    }
+
+    if (user.weekKey !== getWeekKey()) sync()
+
+    const onFocus = () => sync()
+    const onVis = () => {
+      if (document.visibilityState === 'visible') sync()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [user, refreshEconomy])
 
   const buyItem = useCallback(
     async (itemId: string) => {

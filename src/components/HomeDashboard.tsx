@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from 'react'
 import type { UserProfile } from '../lib/auth'
 import {
+  displayWeekStat,
   getHold,
   holdImageSrc,
   holdXpBarColor,
@@ -161,9 +162,16 @@ export function HomeDashboard({
         <>
           <section className="home-week-chip" aria-label="이번 주">
             <span>이번 주</span>
-            <strong>{profile.weekXp.toLocaleString('ko-KR')} XP</strong>
+            <strong>
+              {displayWeekStat(profile.weekKey, profile.weekXp).toLocaleString(
+                'ko-KR',
+              )}{' '}
+              XP
+            </strong>
             <span className="home-week-sep">·</span>
-            <strong>{profile.weekWins}승</strong>
+            <strong>
+              {displayWeekStat(profile.weekKey, profile.weekWins)}승
+            </strong>
           </section>
           <section className="home-economy" aria-label="힌트와 초크가루">
             <div>

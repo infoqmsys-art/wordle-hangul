@@ -55,6 +55,7 @@ function App() {
     row: number
     col: number
   } | null>(null)
+  const [giveUpConfirm, setGiveUpConfirm] = useState(false)
   const prevGameStatus = useRef(game.status)
   const mailAutoShownFor = useRef<string | null>(null)
   const patchProgress = auth.patchProgress
@@ -349,7 +350,7 @@ function App() {
                   setMenuOpen(false)
                 }}
               >
-                랭킹
+                단어킹
               </button>
               <button
                 type="button"
@@ -358,7 +359,7 @@ function App() {
                   setMenuOpen(false)
                 }}
               >
-                유저랭킹
+                XP 랭킹
               </button>
               <button
                 type="button"
@@ -421,7 +422,7 @@ function App() {
               played={homePlayed}
               wins={homeWins}
               onOpenProfile={openProfile}
-              onOpenRanking={() => openRanking('classic')}
+              onOpenRanking={() => openRanking('xp')}
               onOpenShop={
                 auth.user
                   ? () => {
@@ -591,7 +592,7 @@ function App() {
                 setMenuOpen(false)
               }}
             >
-              랭킹
+              단어킹
             </button>
             <button
               type="button"
@@ -600,7 +601,7 @@ function App() {
                 setMenuOpen(false)
               }}
             >
-              유저랭킹
+              XP 랭킹
             </button>
             <button
               type="button"
@@ -721,7 +722,59 @@ function App() {
                   : `보유힌트 ${auth.user.hints}`}
             </button>
           )}
+          {!finished && (
+            <button
+              type="button"
+              className="hint-pill giveup-btn"
+              disabled={game.revealingRow !== null || giveUpConfirm}
+              onClick={() => setGiveUpConfirm(true)}
+            >
+              포기
+            </button>
+          )}
         </div>
+
+        {giveUpConfirm && (
+          <div
+            className="modal-backdrop hint-confirm-backdrop"
+            role="presentation"
+            onClick={() => setGiveUpConfirm(false)}
+          >
+            <div
+              className="modal hint-confirm-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="giveup-confirm-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 id="giveup-confirm-title">포기할까요?</h2>
+              <p className="modal-sub">
+                정답이 공개되고 이 판은 패배로 기록돼요
+              </p>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setGiveUpConfirm(false)}
+                >
+                  계속하기
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    setGiveUpConfirm(false)
+                    setHintPickMode(false)
+                    setHintConfirm(null)
+                    game.giveUp()
+                  }}
+                >
+                  포기하기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {hintConfirm && (
           <div

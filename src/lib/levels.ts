@@ -1,10 +1,10 @@
 /** 클라이밍 홀드 레벨 · XP · 주간 랭킹 상수/순수 함수 */
 
-export const MAX_LEVEL = 11
+export const MAX_LEVEL = 15
 
 /**
  * 레벨 n → n+1 에 필요한 XP (index = 현재 레벨)
- * 합계 약 14,800 XP ≈ 하루 10판(전승·혼합) 기준 만렙 ~30일
+ * 1~11 합계 약 14,750 XP (기존 유지) + 12~15 로 후반 확장
  */
 export const XP_TO_NEXT: Record<number, number> = {
   1: 170,
@@ -17,6 +17,10 @@ export const XP_TO_NEXT: Record<number, number> = {
   8: 2340,
   9: 3060,
   10: 3960,
+  11: 5000,
+  12: 6500,
+  13: 8500,
+  14: 11000,
 }
 
 export type HoldLevel = {
@@ -40,6 +44,11 @@ export const HOLD_LEVELS: HoldLevel[] = [
   { level: 9, name: '회색홀드', color: '#7F8C8D', textColor: '#1a1a1a', image: 'holds/hold-9.png' },
   { level: 10, name: '갈색홀드', color: '#6E2C00', textColor: '#ffffff', image: 'holds/hold-10.png' },
   { level: 11, name: '검정홀드', color: '#1C1C1C', textColor: '#ffffff', image: 'holds/hold-11.png' },
+  // 12+ : PNG 없음 → hold-11 재사용 + UI 틴트
+  { level: 12, name: '은빛홀드', color: '#C0C7D1', textColor: '#1a1a1a', image: 'holds/hold-11.png' },
+  { level: 13, name: '금빛홀드', color: '#D4A017', textColor: '#1a1a1a', image: 'holds/hold-11.png' },
+  { level: 14, name: '진주홀드', color: '#E8D5FF', textColor: '#1a1a1a', image: 'holds/hold-11.png' },
+  { level: 15, name: '무지개홀드', color: '#5B8DEF', textColor: '#ffffff', image: 'holds/hold-11.png' },
 ]
 
 export function getHold(level: number): HoldLevel {
@@ -60,6 +69,10 @@ export function holdXpBarColor(level: number): string {
   if (hold.level === 2) return '#c9a227'
   if (hold.level === 7) return '#d46b8c'
   if (hold.level === 9) return '#5a6570'
+  if (hold.level === 12) return '#8a93a0'
+  if (hold.level === 13) return '#c9a227'
+  if (hold.level === 14) return '#9b7ec8'
+  if (hold.level === 15) return '#5B8DEF'
   return hold.color
 }
 
@@ -68,7 +81,7 @@ export type LevelProgressView = {
   totalXp: number
   /** 현재 레벨 안에서 채운 XP */
   xpIntoLevel: number
-  /** 다음 레벨까지 필요 XP (11이면 null) */
+  /** 다음 레벨까지 필요 XP (만렙이면 null) */
   xpForNext: number | null
   hold: HoldLevel
 }
@@ -276,6 +289,15 @@ export function getClaimExpiresAt(settledWeekKey: string): number {
 export function kstDateKey(nowMs: number = Date.now()): string {
   const { year, month, day } = kstYmdH(nowMs)
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** 저장된 weekKey가 이번 주가 아니면 0 (월 09:00 전 동기화 전 UI용) */
+export function displayWeekStat(
+  weekKey: string,
+  value: number,
+  nowMs: number = Date.now(),
+): number {
+  return weekKey === getWeekKey(nowMs) ? value : 0
 }
 
 export type PendingWeekReward = {

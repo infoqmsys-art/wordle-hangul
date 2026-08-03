@@ -569,6 +569,17 @@ export function useGame() {
     [showToast, startedAt, playMode, difficulty],
   )
 
+  /** 플레이 중 포기 → 정답 공개 + 패배 처리 */
+  const giveUp = useCallback(() => {
+    if (status !== 'playing' || !answerEntry || locked) return
+    finishGame(
+      'lost',
+      `정답은 ${answerEntry.word}`,
+      answerEntry.word,
+      Math.max(1, rows.length),
+    )
+  }, [status, answerEntry, locked, rows.length, finishGame])
+
   const onKey = useCallback(
     (key: string) => {
       if (locked || !dict || !answerEntry) return
@@ -745,6 +756,7 @@ export function useGame() {
     nextRound,
     startGame,
     changeMode,
+    giveUp,
     refreshStreak,
     celebrate,
     currentStreak,
