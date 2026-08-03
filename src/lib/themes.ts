@@ -1,9 +1,11 @@
 export type BoardThemeId =
   | 'default'
-  | 'chalkboard'
   | 'cat'
   | 'sakura'
-  | 'night'
+  | 'lemon'
+  | 'mint'
+  | 'sky'
+  | 'candy'
 
 export type BoardTheme = {
   id: BoardThemeId
@@ -15,12 +17,7 @@ export const BOARD_THEMES: BoardTheme[] = [
   {
     id: 'default',
     name: '기본',
-    description: '지금 푸들푸들 기본 톤',
-  },
-  {
-    id: 'chalkboard',
-    name: '칠판',
-    description: '분필 느낌의 어두운 보드',
+    description: '푸들푸들 기본 톤',
   },
   {
     id: 'cat',
@@ -29,13 +26,28 @@ export const BOARD_THEMES: BoardTheme[] = [
   },
   {
     id: 'sakura',
-    name: '애니감',
-    description: '파스텔 분홍·라벤더 톤',
+    name: '벚꽃',
+    description: '분홍·라벤더 파스텔',
   },
   {
-    id: 'night',
-    name: '야간',
-    description: '어두운 배경 + 선명한 타일',
+    id: 'lemon',
+    name: '레몬',
+    description: '상큼한 노랑·시트러스',
+  },
+  {
+    id: 'mint',
+    name: '민트',
+    description: '시원한 민트·연두',
+  },
+  {
+    id: 'sky',
+    name: '하늘',
+    description: '맑은 하늘색·구름톤',
+  },
+  {
+    id: 'candy',
+    name: '캔디',
+    description: '통통 튀는 사탕 색',
   },
 ]
 
