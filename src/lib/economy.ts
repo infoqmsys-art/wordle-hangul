@@ -6,6 +6,13 @@ import {
   syncWeekProgress,
   type UserProgress,
 } from './progress'
+import {
+  DEFAULT_THEME,
+  getBoardTheme,
+  isBoardThemeId,
+  parseOwnedThemeIds,
+  type BoardThemeId,
+} from './themes'
 
 const USERS = 'users'
 
@@ -41,6 +48,8 @@ function economyPayload(nickname: string, progress: UserProgress) {
     lastDailyHintDate: progress.lastDailyHintDate,
     economyVersion: progress.economyVersion,
     claimedMailIds: progress.claimedMailIds,
+    ownedThemeIds: progress.ownedThemeIds,
+    equippedThemeId: progress.equippedThemeId,
     updatedAt: serverTimestamp(),
   }
 }
@@ -114,6 +123,75 @@ export async function buyShopItem(
     ...prev,
     tokens: prev.tokens - item.tokenCost,
     hints: prev.hints + item.hintAmount,
+  }
+
+  await setDoc(
+    doc(getDb(), USERS, uid),
+    economyPayload(nickname, progress),
+    { merge: true },
+  )
+
+  return progress
+}
+
+export async function buyTheme(
+  uid: string,
+  nickname: string,
+  themeId: string,
+): Promise<UserProgress> {
+  if (!isFirebaseConfigured()) throw new Error('테마 상점을 아직 쓸 수 없어요')
+  if (!isBoardThemeId(themeId)) throw new Error('테마를 찾을 수 없어요')
+
+  const theme = getBoardTheme(themeId)
+  if (!theme) throw new Error('테마를 찾을 수 없어요')
+  if (theme.tokenCost <= 0) throw new Error('기본 테마는 이미 무료예요')
+
+  const synced = await syncEconomy(uid, nickname)
+  const prev = synced.progress
+  const owned = parseOwnedThemeIds(prev.ownedThemeIds)
+
+  if (owned.includes(themeId)) {
+    throw new Error('이미 보유한 테마예요')
+  }
+  if (prev.tokens < theme.tokenCost) {
+    throw new Error('초크가루가 부족해요')
+  }
+
+  const progress: UserProgress = {
+    ...prev,
+    tokens: prev.tokens - theme.tokenCost,
+    ownedThemeIds: [...owned, themeId],
+    equippedThemeId: themeId,
+  }
+
+  await setDoc(
+    doc(getDb(), USERS, uid),
+    economyPayload(nickname, progress),
+    { merge: true },
+  )
+
+  return progress
+}
+
+export async function equipTheme(
+  uid: string,
+  nickname: string,
+  themeId: string,
+): Promise<UserProgress> {
+  if (!isFirebaseConfigured()) throw new Error('테마를 아직 쓸 수 없어요')
+  if (!isBoardThemeId(themeId)) throw new Error('테마를 찾을 수 없어요')
+
+  const synced = await syncEconomy(uid, nickname)
+  const prev = synced.progress
+  const owned = parseOwnedThemeIds(prev.ownedThemeIds)
+
+  if (themeId !== DEFAULT_THEME && !owned.includes(themeId as BoardThemeId)) {
+    throw new Error('보유하지 않은 테마예요')
+  }
+
+  const progress: UserProgress = {
+    ...prev,
+    equippedThemeId: themeId,
   }
 
   await setDoc(

@@ -34,8 +34,12 @@ type XpFlash = {
 function App() {
   const game = useGame()
   const auth = useAuth()
-  const { themeId, setTheme } = useBoardTheme()
-  const themeAttr = themeId === 'default' ? undefined : themeId
+  const boardTheme = useBoardTheme({
+    ownedThemeIds: auth.user?.ownedThemeIds ?? ['default'],
+    equippedFromCloud: auth.user?.equippedThemeId ?? null,
+  })
+  const themeAttr =
+    boardTheme.themeId === 'default' ? undefined : boardTheme.themeId
   const [howto, setHowto] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [rankingOpen, setRankingOpen] = useState(false)
@@ -270,6 +274,46 @@ function App() {
       }}
       onUpdateNickname={auth.rename}
       onClaimReward={auth.claimReward}
+    />
+  )
+
+  const themeModal = (
+    <ThemeModal
+      open={themeOpen}
+      themeId={boardTheme.themeId}
+      equippedId={boardTheme.equippedId}
+      ownedThemeIds={auth.user?.ownedThemeIds ?? ['default']}
+      tokens={auth.user?.tokens ?? 0}
+      loggedIn={Boolean(auth.user)}
+      busy={auth.busy}
+      error={auth.error}
+      trial={boardTheme.trial}
+      trialRemainingMs={boardTheme.trialRemainingMs}
+      onPreview={boardTheme.preview}
+      onEquip={async (id) => {
+        if (auth.user) {
+          const ok = await auth.wearTheme(id)
+          if (ok) boardTheme.setEquippedId(id)
+          return
+        }
+        boardTheme.equipLocal(id)
+      }}
+      onBuy={async (id) => {
+        const ok = await auth.purchaseTheme(id)
+        if (ok) boardTheme.setEquippedId(id)
+        return ok
+      }}
+      onTrial={(id) => {
+        boardTheme.startTrial(id)
+      }}
+      onClose={() => {
+        setThemeOpen(false)
+        auth.clearError()
+      }}
+      onNeedLogin={() => {
+        setThemeOpen(false)
+        openProfile()
+      }}
     />
   )
 
@@ -517,12 +561,7 @@ function App() {
             onClaim={auth.claimMail}
           />
         )}
-        <ThemeModal
-          open={themeOpen}
-          themeId={themeId}
-          onSelect={setTheme}
-          onClose={() => setThemeOpen(false)}
-        />
+        {themeModal}
         {profileModal}
       </div>
     )
@@ -1018,12 +1057,7 @@ function App() {
           onClaim={auth.claimMail}
         />
       )}
-      <ThemeModal
-        open={themeOpen}
-        themeId={themeId}
-        onSelect={setTheme}
-        onClose={() => setThemeOpen(false)}
-      />
+      {themeModal}
       {profileModal}
     </div>
   )

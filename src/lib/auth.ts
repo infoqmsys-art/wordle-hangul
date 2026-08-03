@@ -48,6 +48,8 @@ export type UserProfile = {
   lastDailyHintDate: string
   economyVersion: number
   claimedMailIds: string[]
+  ownedThemeIds: string[]
+  equippedThemeId: string
 } & PersonalStats
 
 export function getActiveUid(): string | null {
@@ -71,6 +73,8 @@ function progressFields(p: UserProgress) {
     lastDailyHintDate: p.lastDailyHintDate,
     economyVersion: p.economyVersion,
     claimedMailIds: p.claimedMailIds,
+    ownedThemeIds: p.ownedThemeIds,
+    equippedThemeId: p.equippedThemeId,
   }
 }
 
@@ -435,6 +439,8 @@ export async function updateNickname(
     lastDailyHintDate: current.lastDailyHintDate,
     economyVersion: current.economyVersion,
     claimedMailIds: current.claimedMailIds ?? [],
+    ownedThemeIds: current.ownedThemeIds ?? ['default'],
+    equippedThemeId: current.equippedThemeId ?? 'default',
   }
 
   const nickname = await saveProfileWithUniqueNickname({

@@ -10,7 +10,7 @@ import {
   updateNickname,
   type UserProfile,
 } from '../lib/auth'
-import { buyShopItem, consumeHint, syncEconomy } from '../lib/economy'
+import { buyShopItem, buyTheme, consumeHint, equipTheme, syncEconomy } from '../lib/economy'
 import { getWeekKey } from '../lib/levels'
 import { claimMailItem } from '../lib/mailbox'
 import { claimWeekReward, type UserProgress } from '../lib/progress'
@@ -225,6 +225,44 @@ export function useAuth() {
     [user],
   )
 
+  const purchaseTheme = useCallback(
+    async (themeId: string) => {
+      if (!user) return false
+      setBusy(true)
+      setError(null)
+      try {
+        const progress = await buyTheme(user.uid, user.nickname, themeId)
+        setUser(applyProgressToProfile(user, progress))
+        return true
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '테마 구매에 실패했어요')
+        return false
+      } finally {
+        setBusy(false)
+      }
+    },
+    [user],
+  )
+
+  const wearTheme = useCallback(
+    async (themeId: string) => {
+      if (!user) return false
+      setBusy(true)
+      setError(null)
+      try {
+        const progress = await equipTheme(user.uid, user.nickname, themeId)
+        setUser(applyProgressToProfile(user, progress))
+        return true
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '테마 장착에 실패했어요')
+        return false
+      } finally {
+        setBusy(false)
+      }
+    },
+    [user],
+  )
+
   return {
     user,
     ready,
@@ -237,6 +275,8 @@ export function useAuth() {
     signOut,
     claimReward,
     claimMail,
+    purchaseTheme,
+    wearTheme,
     patchProgress,
     refreshEconomy,
     buyItem,

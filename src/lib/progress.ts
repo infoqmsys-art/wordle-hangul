@@ -27,6 +27,11 @@ import {
   type PendingWeekReward,
 } from './levels'
 import { getDb, isFirebaseConfigured } from './firebase'
+import {
+  DEFAULT_THEME,
+  isBoardThemeId,
+  parseOwnedThemeIds,
+} from './themes'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const RECORDS = 'records'
@@ -59,6 +64,10 @@ export type UserProgress = {
   economyVersion: number
   /** 우편함에서 이미 수령한 보상 id */
   claimedMailIds: string[]
+  /** 보유 보드 테마 id */
+  ownedThemeIds: string[]
+  /** 장착 중인 보드 테마 */
+  equippedThemeId: string
 }
 
 export const emptyProgress = (): UserProgress => ({
@@ -77,6 +86,8 @@ export const emptyProgress = (): UserProgress => ({
   lastDailyHintDate: '',
   economyVersion: 0,
   claimedMailIds: [],
+  ownedThemeIds: ['default'],
+  equippedThemeId: 'default',
 })
 
 function parsePending(
@@ -117,6 +128,10 @@ export function parseUserProgress(
           (id): id is string => typeof id === 'string' && id.length > 0,
         )
       : [],
+    ownedThemeIds: parseOwnedThemeIds(data.ownedThemeIds),
+    equippedThemeId: isBoardThemeId(String(data.equippedThemeId ?? ''))
+      ? String(data.equippedThemeId)
+      : DEFAULT_THEME,
   }
 }
 
@@ -137,6 +152,8 @@ function progressWriteFields(progress: UserProgress) {
     lastDailyHintDate: progress.lastDailyHintDate,
     economyVersion: progress.economyVersion,
     claimedMailIds: progress.claimedMailIds,
+    ownedThemeIds: progress.ownedThemeIds,
+    equippedThemeId: progress.equippedThemeId,
   }
 }
 
