@@ -7,7 +7,7 @@ import {
   type RankEntry,
   type RankMode,
 } from '../lib/history'
-import { getWeekKey } from '../lib/levels'
+import { formatWeekRangeLabel, getWeekKey } from '../lib/levels'
 import {
   loadWeeklyRanking,
   type WeeklyRankEntry,
@@ -19,7 +19,7 @@ export type RankScope = 'total' | 'week'
 type Props = {
   open: boolean
   onClose: () => void
-  /** total = 누적, week = 주간 */
+  /** total = 누적, week = 이번주 */
   initialScope?: RankScope
   initialDifficulty?: Difficulty
   onOpenHistory?: () => void
@@ -109,6 +109,8 @@ export function RankingModal({
   if (!open) return null
 
   const isWeek = scope === 'week'
+  const weekKey = getWeekKey()
+  const weekRangeLabel = formatWeekRangeLabel(weekKey)
   const emptyLabel = isWeek
     ? '이번 주 기록이 아직 없어요'
     : `아직 ${DIFFICULTY_META[tab].label} 기록이 없어요`
@@ -147,7 +149,7 @@ export function RankingModal({
             className={scope === 'week' ? 'on' : ''}
             onClick={() => setScope('week')}
           >
-            주간
+            이번주
           </button>
           <button
             type="button"
@@ -160,12 +162,16 @@ export function RankingModal({
           </button>
         </div>
 
+        {isWeek && weekRangeLabel && (
+          <p className="rank-week-range">{weekRangeLabel}</p>
+        )}
+
         {helpOpen && (
           <div className="rank-help-panel" role="note">
             {isWeek ? (
               <>
                 <p>
-                  <strong>주간</strong>은 이번 주 판수 · 최단시도 · 최단시간
+                  <strong>이번주</strong>는 판수 · 최단시도 · 최단시간
                   순위예요. 매주 월요일 09:00에 새로 시작됩니다.
                 </p>
                 <p>
@@ -199,7 +205,7 @@ export function RankingModal({
           <div
             className="rank-mode-tabs rank-week-tabs"
             role="tablist"
-            aria-label="주간 기준"
+            aria-label="이번주 기준"
           >
             {(Object.keys(WEEK_MODE_LABEL) as WeeklyRankMode[]).map((m) => (
               <button

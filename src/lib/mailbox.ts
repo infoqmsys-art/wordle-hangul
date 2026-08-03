@@ -32,6 +32,13 @@ export const MAIL_CATALOG: MailItem[] = [
     hints: 0,
     tokens: 10,
   },
+  {
+    id: 'patch-2026-08-03-hint-pack-5',
+    title: '순화형 힌트 패키지',
+    body: '순화형을 위한 힌트 패키지예요. 힌트 5개를 드려요.',
+    hints: 5,
+    tokens: 0,
+  },
 ]
 
 export function parseClaimedMailIds(raw: unknown): string[] {

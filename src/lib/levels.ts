@@ -268,6 +268,18 @@ export function getPreviousWeekKey(nowMs: number = Date.now()): string {
   return getWeekKey(nowMs - 7 * DAY_MS)
 }
 
+/** UI용: `2026-08-03 월 09시 ~` (해당 주 시작 = 월 09:00 KST) */
+export function formatWeekRangeLabel(weekKey: string): string {
+  const startMs = getWeekStartMs(weekKey)
+  if (!startMs) return ''
+  // startMs = 월 00:00 UTC = 월 09:00 KST → UTC Y-M-D가 KST 달력일
+  const d = new Date(startMs)
+  const y = d.getUTCFullYear()
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${day} 월 09시 ~`
+}
+
 /** 클레임 만료: 해당 주 종료(다음 주 시작) 후 7일 */
 export function getClaimExpiresAt(settledWeekKey: string): number {
   return getWeekStartMs(settledWeekKey) + (7 + CLAIM_DAYS) * DAY_MS
