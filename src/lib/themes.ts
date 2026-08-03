@@ -68,11 +68,23 @@ export const DEFAULT_THEME: BoardThemeId = 'default'
 export const DEFAULT_OWNED_THEME_IDS: readonly BoardThemeId[] = [DEFAULT_THEME]
 
 const EQUIP_KEY = 'wordle-hangul-board-theme'
-const TRIAL_KEY = 'wordle-hangul-theme-trial-v2'
+/** v3: 계정별·테마별 체험. 오류 패치로 v2는 버리고 초기화 */
+const TRIAL_KEY = 'wordle-hangul-theme-trial-v3'
+const LEGACY_TRIAL_KEYS = [
+  'wordle-hangul-theme-trial-v2',
+  'wordle-hangul-theme-trial',
+]
 
+/** UI용 요약 (특정 테마의 남은 체험 판수) */
 export type ThemeTrial = {
   themeId: BoardThemeId
   gamesLeft: number
+}
+
+/** 계정별 체험 저장 — 테마마다 독립 */
+export type ThemeTrialStore = {
+  /** themeId → 남은 판수. 없음=미시작(시작 가능), 0=소진 */
+  remaining: Partial<Record<BoardThemeId, number>>
 }
 
 function accountStorageKey(base: string, accountKey: string): string {
@@ -106,7 +118,6 @@ export function loadEquippedTheme(accountKey = 'guest'): BoardThemeId {
   try {
     const scoped = localStorage.getItem(accountStorageKey(EQUIP_KEY, accountKey))
     if (scoped && isBoardThemeId(scoped)) return scoped
-    // 구버전 전역 키 → guest만 마이그레이션
     if (accountKey === 'guest') {
       const legacy = localStorage.getItem(EQUIP_KEY) ?? ''
       if (isBoardThemeId(legacy)) {
@@ -128,105 +139,157 @@ export function saveEquippedTheme(id: BoardThemeId, accountKey = 'guest') {
   }
 }
 
-export function loadThemeTrial(accountKey = 'guest'): ThemeTrial | null {
+function wipeLegacyTrialKeys(accountKey: string) {
   try {
-    const key = accountStorageKey(TRIAL_KEY, accountKey)
-    let raw = localStorage.getItem(key)
-    if (!raw && accountKey === 'guest') {
-      raw = localStorage.getItem(TRIAL_KEY)
+    for (const base of LEGACY_TRIAL_KEYS) {
+      localStorage.removeItem(base)
+      localStorage.removeItem(accountStorageKey(base, accountKey))
     }
-    if (!raw) return null
-    const data = JSON.parse(raw) as ThemeTrial
-    if (!isBoardThemeId(data.themeId)) return null
-    const left = Math.floor(Number(data.gamesLeft ?? 0))
-    if (left <= 0) {
-      clearThemeTrial(accountKey)
-      return null
-    }
-    // guest 레거시 → 스코프 키로 이전
-    if (accountKey === 'guest') {
-      localStorage.setItem(key, JSON.stringify({ themeId: data.themeId, gamesLeft: left }))
-    }
-    return { themeId: data.themeId, gamesLeft: left }
   } catch {
-    return null
+    /* ignore */
   }
 }
 
+export function emptyTrialStore(): ThemeTrialStore {
+  return { remaining: {} }
+}
+
+export function loadTrialStore(accountKey = 'guest'): ThemeTrialStore {
+  wipeLegacyTrialKeys(accountKey)
+  try {
+    const raw = localStorage.getItem(accountStorageKey(TRIAL_KEY, accountKey))
+    if (!raw) return emptyTrialStore()
+    const data = JSON.parse(raw) as ThemeTrialStore
+    const remaining: ThemeTrialStore['remaining'] = {}
+    if (data && typeof data.remaining === 'object' && data.remaining) {
+      for (const [id, left] of Object.entries(data.remaining)) {
+        if (!isBoardThemeId(id)) continue
+        const n = Math.floor(Number(left))
+        if (Number.isFinite(n) && n >= 0) remaining[id] = n
+      }
+    }
+    return { remaining }
+  } catch {
+    return emptyTrialStore()
+  }
+}
+
+export function saveTrialStore(store: ThemeTrialStore, accountKey = 'guest') {
+  try {
+    localStorage.setItem(
+      accountStorageKey(TRIAL_KEY, accountKey),
+      JSON.stringify(store),
+    )
+  } catch {
+    /* ignore */
+  }
+}
+
+export function trialGamesLeft(
+  store: ThemeTrialStore,
+  themeId: BoardThemeId,
+): number {
+  return Math.max(0, Math.floor(Number(store.remaining[themeId] ?? 0)))
+}
+
+/** 아직 시작 안 했거나 진행 중이면 true. 0(소진)이면 false */
+export function canStartThemeTrial(
+  themeId: BoardThemeId,
+  store: ThemeTrialStore,
+  ownedIds: readonly string[],
+): boolean {
+  if (themeId === DEFAULT_THEME) return false
+  if (ownedIds.includes(themeId)) return false
+  const left = store.remaining[themeId]
+  if (left === 0) return false
+  return true
+}
+
+export function getActiveTrial(
+  store: ThemeTrialStore,
+  themeId: BoardThemeId,
+): ThemeTrial | null {
+  const left = trialGamesLeft(store, themeId)
+  if (left <= 0) return null
+  return { themeId, gamesLeft: left }
+}
+
+/** 테마별 체험 시작(또는 이어하기). 소진된 테마는 null */
 export function startThemeTrial(
   themeId: BoardThemeId,
   accountKey = 'guest',
-): ThemeTrial {
-  const trial: ThemeTrial = {
-    themeId,
-    gamesLeft: THEME_TRIAL_GAMES,
+): ThemeTrial | null {
+  if (themeId === DEFAULT_THEME) return null
+  const store = loadTrialStore(accountKey)
+  const cur = store.remaining[themeId]
+  if (cur === 0) return null
+  if (cur == null) {
+    store.remaining[themeId] = THEME_TRIAL_GAMES
+    saveTrialStore(store, accountKey)
+    return { themeId, gamesLeft: THEME_TRIAL_GAMES }
   }
-  try {
-    localStorage.setItem(
-      accountStorageKey(TRIAL_KEY, accountKey),
-      JSON.stringify(trial),
-    )
-  } catch {
-    /* ignore */
-  }
-  return trial
+  return { themeId, gamesLeft: cur }
 }
 
-export function clearThemeTrial(accountKey = 'guest') {
+/** 특정 테마 체험 제거(구매 시). 없으면 전체 스토어 유지 */
+export function clearThemeTrial(
+  accountKey = 'guest',
+  themeId?: BoardThemeId,
+) {
+  const store = loadTrialStore(accountKey)
+  if (themeId) {
+    delete store.remaining[themeId]
+    saveTrialStore(store, accountKey)
+    return
+  }
   try {
     localStorage.removeItem(accountStorageKey(TRIAL_KEY, accountKey))
-    if (accountKey === 'guest') localStorage.removeItem(TRIAL_KEY)
   } catch {
     /* ignore */
   }
 }
 
-/** 한 판 종료 시 체험 차감. 만료되면 null */
-export function consumeThemeTrialGame(accountKey = 'guest'): ThemeTrial | null {
-  const trial = loadThemeTrial(accountKey)
-  if (!trial) return null
-  const nextLeft = trial.gamesLeft - 1
-  if (nextLeft <= 0) {
-    clearThemeTrial(accountKey)
-    return null
-  }
-  const next: ThemeTrial = { themeId: trial.themeId, gamesLeft: nextLeft }
-  try {
-    localStorage.setItem(
-      accountStorageKey(TRIAL_KEY, accountKey),
-      JSON.stringify(next),
-    )
-  } catch {
-    /* ignore */
-  }
-  return next
+/**
+ * 한 판 종료 시 장착 중인 체험 테마만 1판 차감.
+ * owned면 차감 안 함. 반환 = 해당 테마 남은 체험(없으면 null)
+ */
+export function consumeThemeTrialGame(
+  accountKey = 'guest',
+  equippedThemeId: BoardThemeId,
+  ownedIds: readonly string[] = [],
+): ThemeTrial | null {
+  if (equippedThemeId === DEFAULT_THEME) return null
+  if (ownedIds.includes(equippedThemeId)) return null
+
+  const store = loadTrialStore(accountKey)
+  const left = store.remaining[equippedThemeId]
+  if (left == null || left <= 0) return null
+
+  const nextLeft = left - 1
+  store.remaining[equippedThemeId] = nextLeft
+  saveTrialStore(store, accountKey)
+  if (nextLeft <= 0) return null
+  return { themeId: equippedThemeId, gamesLeft: nextLeft }
 }
 
 export function canUseTheme(
   themeId: BoardThemeId,
   ownedIds: readonly string[],
-  trial: ThemeTrial | null,
+  store: ThemeTrialStore | null,
 ): boolean {
   if (themeId === DEFAULT_THEME) return true
   if (ownedIds.includes(themeId)) return true
-  if (trial && trial.themeId === themeId && trial.gamesLeft > 0) return true
+  if (store && trialGamesLeft(store, themeId) > 0) return true
   return false
 }
 
 export function resolveActiveTheme(
   equipped: BoardThemeId,
   ownedIds: readonly string[],
-  trial: ThemeTrial | null,
+  store: ThemeTrialStore | null,
   preview: BoardThemeId | null,
 ): BoardThemeId {
   if (preview && isBoardThemeId(preview)) return preview
-  // 체험 중이면 체험 테마를 우선 (클라우드/기본 장착에 가려지지 않게)
-  if (trial && trial.gamesLeft > 0) {
-    if (equipped === trial.themeId) return trial.themeId
-    if (!ownedIds.includes(equipped) || equipped === DEFAULT_THEME) {
-      return trial.themeId
-    }
-  }
-  if (canUseTheme(equipped, ownedIds, trial)) return equipped
+  if (canUseTheme(equipped, ownedIds, store)) return equipped
   return DEFAULT_THEME
 }

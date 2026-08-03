@@ -315,8 +315,9 @@ function App() {
         loggedIn: Boolean(auth.user),
         busy: auth.busy,
         error: auth.error,
-        trial: boardTheme.trial,
-        trialGamesLeft: boardTheme.trialGamesLeft,
+        trialStore: boardTheme.trialStore,
+        gamesLeftFor: boardTheme.gamesLeftFor,
+        canTrial: boardTheme.canTrial,
         onPreview: boardTheme.preview,
         onEquip: async (id) => {
           const owned = auth.user?.ownedThemeIds ?? []
@@ -331,7 +332,7 @@ function App() {
         onBuy: async (id) => {
           const ok = await auth.purchaseTheme(id)
           if (ok) {
-            boardTheme.endTrial()
+            boardTheme.endTrial(id)
             boardTheme.setEquippedId(id)
           }
           return ok

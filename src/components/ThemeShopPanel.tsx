@@ -3,7 +3,7 @@ import {
   THEME_TRIAL_GAMES,
   canUseTheme,
   type BoardThemeId,
-  type ThemeTrial,
+  type ThemeTrialStore,
 } from '../lib/themes'
 
 export type ThemeShopPanelProps = {
@@ -14,8 +14,9 @@ export type ThemeShopPanelProps = {
   loggedIn: boolean
   busy?: boolean
   error?: string | null
-  trial: ThemeTrial | null
-  trialGamesLeft: number
+  trialStore: ThemeTrialStore
+  gamesLeftFor: (id: BoardThemeId) => number
+  canTrial: (id: BoardThemeId) => boolean
   onPreview: (id: BoardThemeId | null) => void
   onEquip: (id: BoardThemeId) => void | Promise<void>
   onBuy: (id: BoardThemeId) => Promise<boolean>
@@ -42,8 +43,9 @@ export function ThemeShopPanel({
   loggedIn,
   busy,
   error,
-  trial,
-  trialGamesLeft,
+  trialStore,
+  gamesLeftFor,
+  canTrial,
   onPreview,
   onEquip,
   onBuy,
@@ -51,16 +53,20 @@ export function ThemeShopPanel({
   onNeedLogin,
 }: ThemeShopPanelProps) {
   void tokens
+  const activeTrialLeft = gamesLeftFor(equippedId)
+  const showBanner =
+    activeTrialLeft > 0 && !ownedThemeIds.includes(equippedId)
+
   return (
     <div className="theme-shop-panel">
       <p className="modal-sub theme-shop-sub">
-        눌러보면 미리보기가 적용돼요. 유료 테마는 {THEME_TRIAL_GAMES}판 체험 후
-        구매할 수 있어요.
+        눌러보면 미리보기가 적용돼요. 유료 테마는 테마마다 {THEME_TRIAL_GAMES}판
+        체험할 수 있어요.
       </p>
 
-      {trial && trialGamesLeft > 0 && (
+      {showBanner && (
         <p className="theme-trial-banner">
-          체험 중 · 남은 {trialGamesLeft}판
+          체험 중 · 남은 {activeTrialLeft}판
         </p>
       )}
 
@@ -72,9 +78,10 @@ export function ThemeShopPanel({
             theme.tokenCost <= 0 || ownedThemeIds.includes(theme.id)
           const active = themeId === theme.id
           const equipped = equippedId === theme.id
-          const inTrial =
-            trial?.themeId === theme.id && (trial.gamesLeft ?? 0) > 0
-          const usable = canUseTheme(theme.id, ownedThemeIds, trial)
+          const left = gamesLeftFor(theme.id)
+          const inTrial = !owned && left > 0
+          const usable = canUseTheme(theme.id, ownedThemeIds, trialStore)
+          const trialAvailable = canTrial(theme.id)
 
           return (
             <li key={theme.id}>
@@ -98,7 +105,7 @@ export function ThemeShopPanel({
                         : owned
                           ? '보유'
                           : inTrial
-                            ? `체험 ${trialGamesLeft}판`
+                            ? `체험 ${left}판`
                             : `가격 : ${theme.tokenCost} 초크가루`}
                     </span>
                   </span>
@@ -116,14 +123,16 @@ export function ThemeShopPanel({
                     </button>
                   ) : (
                     <>
-                      <button
-                        type="button"
-                        className="pill-btn"
-                        disabled={busy}
-                        onClick={() => onTrial(theme.id)}
-                      >
-                        {THEME_TRIAL_GAMES}판 체험
-                      </button>
+                      {trialAvailable && (
+                        <button
+                          type="button"
+                          className="pill-btn"
+                          disabled={busy}
+                          onClick={() => onTrial(theme.id)}
+                        >
+                          {THEME_TRIAL_GAMES}판 체험
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="pill-btn challenge"
