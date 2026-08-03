@@ -21,6 +21,7 @@ import { getHold } from './lib/levels'
 import { hasUnclaimedMail } from './lib/mailbox'
 import { awardMatchXp } from './lib/progress'
 import { getPersonalStats } from './lib/stats'
+import { DEFAULT_OWNED_THEME_IDS } from './lib/themes'
 import './App.css'
 
 type XpFlash = {
@@ -34,7 +35,8 @@ function App() {
   const game = useGame()
   const auth = useAuth()
   const boardTheme = useBoardTheme({
-    ownedThemeIds: auth.user?.ownedThemeIds ?? ['default'],
+    accountKey: auth.user?.uid ?? 'guest',
+    ownedThemeIds: auth.user?.ownedThemeIds ?? DEFAULT_OWNED_THEME_IDS,
     equippedFromCloud: auth.user?.equippedThemeId ?? null,
   })
   const themeAttr =
@@ -308,7 +310,7 @@ function App() {
       theme={{
         themeId: boardTheme.themeId,
         equippedId: boardTheme.equippedId,
-        ownedThemeIds: auth.user?.ownedThemeIds ?? ['default'],
+        ownedThemeIds: auth.user?.ownedThemeIds ?? [...DEFAULT_OWNED_THEME_IDS],
         tokens: auth.user?.tokens ?? 0,
         loggedIn: Boolean(auth.user),
         busy: auth.busy,

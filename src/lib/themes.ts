@@ -64,12 +64,19 @@ export const BOARD_THEMES: BoardTheme[] = [
 ]
 
 export const DEFAULT_THEME: BoardThemeId = 'default'
+/** 비로그인·폴백용 안정 참조 (매 렌더 새 배열 만들지 않기) */
+export const DEFAULT_OWNED_THEME_IDS: readonly BoardThemeId[] = [DEFAULT_THEME]
+
 const EQUIP_KEY = 'wordle-hangul-board-theme'
 const TRIAL_KEY = 'wordle-hangul-theme-trial-v2'
 
 export type ThemeTrial = {
   themeId: BoardThemeId
   gamesLeft: number
+}
+
+function accountStorageKey(base: string, accountKey: string): string {
+  return `${base}:${accountKey || 'guest'}`
 }
 
 export function isBoardThemeId(value: string): value is BoardThemeId {
@@ -95,34 +102,50 @@ export function parseOwnedThemeIds(raw: unknown): BoardThemeId[] {
   return [...owned]
 }
 
-export function loadEquippedTheme(): BoardThemeId {
+export function loadEquippedTheme(accountKey = 'guest'): BoardThemeId {
   try {
-    const raw = localStorage.getItem(EQUIP_KEY) ?? ''
-    if (isBoardThemeId(raw)) return raw
+    const scoped = localStorage.getItem(accountStorageKey(EQUIP_KEY, accountKey))
+    if (scoped && isBoardThemeId(scoped)) return scoped
+    // 구버전 전역 키 → guest만 마이그레이션
+    if (accountKey === 'guest') {
+      const legacy = localStorage.getItem(EQUIP_KEY) ?? ''
+      if (isBoardThemeId(legacy)) {
+        saveEquippedTheme(legacy, accountKey)
+        return legacy
+      }
+    }
   } catch {
     /* ignore */
   }
   return DEFAULT_THEME
 }
 
-export function saveEquippedTheme(id: BoardThemeId) {
+export function saveEquippedTheme(id: BoardThemeId, accountKey = 'guest') {
   try {
-    localStorage.setItem(EQUIP_KEY, id)
+    localStorage.setItem(accountStorageKey(EQUIP_KEY, accountKey), id)
   } catch {
     /* ignore */
   }
 }
 
-export function loadThemeTrial(): ThemeTrial | null {
+export function loadThemeTrial(accountKey = 'guest'): ThemeTrial | null {
   try {
-    const raw = localStorage.getItem(TRIAL_KEY)
+    const key = accountStorageKey(TRIAL_KEY, accountKey)
+    let raw = localStorage.getItem(key)
+    if (!raw && accountKey === 'guest') {
+      raw = localStorage.getItem(TRIAL_KEY)
+    }
     if (!raw) return null
     const data = JSON.parse(raw) as ThemeTrial
     if (!isBoardThemeId(data.themeId)) return null
     const left = Math.floor(Number(data.gamesLeft ?? 0))
     if (left <= 0) {
-      localStorage.removeItem(TRIAL_KEY)
+      clearThemeTrial(accountKey)
       return null
+    }
+    // guest 레거시 → 스코프 키로 이전
+    if (accountKey === 'guest') {
+      localStorage.setItem(key, JSON.stringify({ themeId: data.themeId, gamesLeft: left }))
     }
     return { themeId: data.themeId, gamesLeft: left }
   } catch {
@@ -130,39 +153,49 @@ export function loadThemeTrial(): ThemeTrial | null {
   }
 }
 
-export function startThemeTrial(themeId: BoardThemeId): ThemeTrial {
+export function startThemeTrial(
+  themeId: BoardThemeId,
+  accountKey = 'guest',
+): ThemeTrial {
   const trial: ThemeTrial = {
     themeId,
     gamesLeft: THEME_TRIAL_GAMES,
   }
   try {
-    localStorage.setItem(TRIAL_KEY, JSON.stringify(trial))
+    localStorage.setItem(
+      accountStorageKey(TRIAL_KEY, accountKey),
+      JSON.stringify(trial),
+    )
   } catch {
     /* ignore */
   }
   return trial
 }
 
-export function clearThemeTrial() {
+export function clearThemeTrial(accountKey = 'guest') {
   try {
-    localStorage.removeItem(TRIAL_KEY)
+    localStorage.removeItem(accountStorageKey(TRIAL_KEY, accountKey))
+    if (accountKey === 'guest') localStorage.removeItem(TRIAL_KEY)
   } catch {
     /* ignore */
   }
 }
 
 /** 한 판 종료 시 체험 차감. 만료되면 null */
-export function consumeThemeTrialGame(): ThemeTrial | null {
-  const trial = loadThemeTrial()
+export function consumeThemeTrialGame(accountKey = 'guest'): ThemeTrial | null {
+  const trial = loadThemeTrial(accountKey)
   if (!trial) return null
   const nextLeft = trial.gamesLeft - 1
   if (nextLeft <= 0) {
-    clearThemeTrial()
+    clearThemeTrial(accountKey)
     return null
   }
   const next: ThemeTrial = { themeId: trial.themeId, gamesLeft: nextLeft }
   try {
-    localStorage.setItem(TRIAL_KEY, JSON.stringify(next))
+    localStorage.setItem(
+      accountStorageKey(TRIAL_KEY, accountKey),
+      JSON.stringify(next),
+    )
   } catch {
     /* ignore */
   }
