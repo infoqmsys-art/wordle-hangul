@@ -60,8 +60,8 @@ export function ThemeShopPanel({
   return (
     <div className="theme-shop-panel">
       <p className="modal-sub theme-shop-sub">
-        눌러보면 미리보기가 적용돼요. 유료 테마는 테마마다 {THEME_TRIAL_GAMES}판
-        체험할 수 있어요.
+        미니 미리보기로 색을 확인하고, 체험·장착·구매로 적용해요. 유료 테마는
+        테마마다 {THEME_TRIAL_GAMES}판 체험할 수 있어요.
       </p>
 
       {showBanner && (
@@ -90,11 +90,14 @@ export function ThemeShopPanel({
                   owned ? ' is-owned' : ''
                 }`}
               >
-                <button
-                  type="button"
-                  className="theme-card-main"
-                  onClick={() => onPreview(theme.id)}
-                >
+                  <button
+                    type="button"
+                    className="theme-card-main"
+                    onClick={() => {
+                      if (usable) void onEquip(theme.id)
+                      else onPreview(theme.id)
+                    }}
+                  >
                   <MiniPreview themeId={theme.id} />
                   <span className="theme-item-text">
                     <strong>{theme.name}</strong>

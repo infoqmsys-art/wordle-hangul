@@ -25,25 +25,31 @@ type Options = {
   equippedFromCloud?: string | null
 }
 
+/**
+ * 계정 진입 시에만 클라우드/로컬을 한 번 맞춘다.
+ * 이후 세션에서는 로컬 장착이 소스 오브 트루스 (힌트·XP 동기화에 안 덮임).
+ */
 function resolveForAccount(
   accountKey: string,
   ownedThemeIds: readonly string[],
   equippedFromCloud: string | null | undefined,
 ): { equippedId: BoardThemeId; store: ThemeTrialStore } {
   const store = loadTrialStore(accountKey)
+  const local = loadEquippedTheme(accountKey)
   const cloud =
     equippedFromCloud && isBoardThemeId(equippedFromCloud)
       ? equippedFromCloud
       : null
 
+  // 로컬이 쓸 수 있으면 우선 (체험·보유 장착 유지)
+  if (canUseTheme(local, ownedThemeIds, store)) {
+    return { equippedId: local, store }
+  }
+
+  // 로컬이 막혔을 때만 클라우드
   if (cloud && canUseTheme(cloud, ownedThemeIds, store)) {
     saveEquippedTheme(cloud, accountKey)
     return { equippedId: cloud, store }
-  }
-
-  const local = loadEquippedTheme(accountKey)
-  if (canUseTheme(local, ownedThemeIds, store)) {
-    return { equippedId: local, store }
   }
 
   saveEquippedTheme(DEFAULT_THEME, accountKey)
@@ -58,69 +64,46 @@ export function useBoardTheme(options: Options = {}) {
     ownedThemeIds,
     options.equippedFromCloud,
   )
-  const [equippedId, setEquippedId] = useState<BoardThemeId>(
+  const [equippedId, setEquippedIdState] = useState<BoardThemeId>(
     () => initial.equippedId,
   )
-  const [previewId, setPreviewId] = useState<BoardThemeId | null>(null)
   const [trialStore, setTrialStore] = useState<ThemeTrialStore>(
     () => initial.store,
   )
   const accountRef = useRef(accountKey)
+  const ownedKey = ownedThemeIds.slice().sort().join(',')
 
-  // 계정 전환 시 해당 계정 로컬+클라우드 상태로 리셋
+  // 계정 전환 시에만 리셋 (owned/cloud 참조 변경으로는 절대 덮지 않음)
   useEffect(() => {
     if (accountRef.current === accountKey) return
     accountRef.current = accountKey
-    setPreviewId(null)
     const next = resolveForAccount(
       accountKey,
       ownedThemeIds,
       options.equippedFromCloud,
     )
     setTrialStore(next.store)
-    setEquippedId(next.equippedId)
-  }, [accountKey, ownedThemeIds, options.equippedFromCloud])
+    setEquippedIdState(next.equippedId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 계정 키가 바뀔 때만
+  }, [accountKey])
 
-  // 같은 계정에서 클라우드 장착이 바뀌면 반영 (구매·장착)
-  // 단, 클라우드 'default'로는 로컬 체험/보유 장착을 덮지 않음
-  // (힌트·경제 동기화 때 equippedThemeId가 default로 내려오는 경우 방지)
-  useEffect(() => {
-    if (accountRef.current !== accountKey) return
-    const cloud = options.equippedFromCloud
-    if (!cloud || !isBoardThemeId(cloud)) return
-
-    if (cloud === DEFAULT_THEME) {
-      setEquippedId((local) => {
-        if (local === DEFAULT_THEME) return local
-        if (
-          ownedThemeIds.includes(local) ||
-          trialGamesLeft(trialStore, local) > 0
-        ) {
-          return local
-        }
-        saveEquippedTheme(DEFAULT_THEME, accountKey)
-        return DEFAULT_THEME
-      })
-      return
-    }
-
-    if (!ownedThemeIds.includes(cloud)) return
-    setEquippedId(cloud)
-    saveEquippedTheme(cloud, accountKey)
-  }, [accountKey, options.equippedFromCloud, ownedThemeIds, trialStore])
-
-  // 체험 종료 후 장착이 막히면 기본으로
+  // 보유 목록이 늘어난 뒤(구매)에도 현재 장착이 유효한지만 검사
   useEffect(() => {
     if (!canUseTheme(equippedId, ownedThemeIds, trialStore)) {
-      setEquippedId(DEFAULT_THEME)
-      saveEquippedTheme(DEFAULT_THEME, accountKey)
+      const fallback = resolveForAccount(
+        accountKey,
+        ownedThemeIds,
+        options.equippedFromCloud,
+      )
+      setEquippedIdState(fallback.equippedId)
     }
-  }, [accountKey, equippedId, ownedThemeIds, trialStore])
+    // ownedKey로 배열 참조  thrash 방지
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountKey, equippedId, ownedKey, trialStore])
 
   const themeId = useMemo(
-    () =>
-      resolveActiveTheme(equippedId, ownedThemeIds, trialStore, previewId),
-    [equippedId, ownedThemeIds, trialStore, previewId],
+    () => resolveActiveTheme(equippedId, ownedThemeIds, trialStore),
+    [equippedId, ownedThemeIds, trialStore],
   )
 
   const trial: ThemeTrial | null = useMemo(() => {
@@ -128,20 +111,22 @@ export function useBoardTheme(options: Options = {}) {
     return getActiveTrial(trialStore, equippedId)
   }, [equippedId, ownedThemeIds, trialStore])
 
+  const setEquippedId = useCallback(
+    (id: BoardThemeId) => {
+      setEquippedIdState(id)
+      saveEquippedTheme(id, accountKey)
+    },
+    [accountKey],
+  )
+
   const equipLocal = useCallback(
     (id: BoardThemeId) => {
       if (!canUseTheme(id, ownedThemeIds, trialStore)) return false
       setEquippedId(id)
-      saveEquippedTheme(id, accountKey)
-      setPreviewId(null)
       return true
     },
-    [accountKey, ownedThemeIds, trialStore],
+    [ownedThemeIds, setEquippedId, trialStore],
   )
-
-  const preview = useCallback((id: BoardThemeId | null) => {
-    setPreviewId(id)
-  }, [])
 
   const startTrial = useCallback(
     (id: BoardThemeId) => {
@@ -152,11 +137,9 @@ export function useBoardTheme(options: Options = {}) {
       if (!next) return null
       setTrialStore(loadTrialStore(accountKey))
       setEquippedId(id)
-      saveEquippedTheme(id, accountKey)
-      setPreviewId(null)
       return next
     },
-    [accountKey, ownedThemeIds],
+    [accountKey, ownedThemeIds, setEquippedId],
   )
 
   const consumeTrialGame = useCallback(() => {
@@ -170,7 +153,7 @@ export function useBoardTheme(options: Options = {}) {
     setTrialStore(after)
 
     if (trialGamesLeft(after, equipped) <= 0) {
-      setEquippedId((prev) => {
+      setEquippedIdState((prev) => {
         if (prev === equipped && !ownedThemeIds.includes(prev)) {
           saveEquippedTheme(DEFAULT_THEME, accountKey)
           return DEFAULT_THEME
@@ -180,7 +163,6 @@ export function useBoardTheme(options: Options = {}) {
     }
   }, [accountKey, ownedThemeIds])
 
-  /** 구매한 테마의 체험만 제거 */
   const endTrial = useCallback(
     (themeId?: BoardThemeId) => {
       clearThemeTrial(accountKey, themeId)
@@ -202,20 +184,17 @@ export function useBoardTheme(options: Options = {}) {
   return {
     themeId,
     equippedId,
-    previewId,
     trial,
     trialStore,
     trialGamesLeft: trial?.gamesLeft ?? 0,
     gamesLeftFor,
     canTrial,
     equipLocal,
-    preview,
+    /** 미리보기는 상점 미니카드만 — 앱 전역 테마는 바꾸지 않음 */
+    preview: (_id: BoardThemeId | null) => {},
     startTrial,
     consumeTrialGame,
     endTrial,
-    setEquippedId: (id: BoardThemeId) => {
-      setEquippedId(id)
-      saveEquippedTheme(id, accountKey)
-    },
+    setEquippedId,
   }
 }

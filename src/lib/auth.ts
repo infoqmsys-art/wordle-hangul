@@ -27,6 +27,11 @@ import {
   setPersonalStats,
   type PersonalStats,
 } from './stats'
+import {
+  DEFAULT_THEME,
+  isBoardThemeId,
+  parseOwnedThemeIds,
+} from './themes'
 
 export type UserProfile = {
   uid: string
@@ -470,9 +475,27 @@ export function applyProgressToProfile(
   profile: UserProfile,
   progress: UserProgress,
 ): UserProfile {
+  const mergedOwned = parseOwnedThemeIds([
+    ...(profile.ownedThemeIds ?? []),
+    ...(progress.ownedThemeIds ?? []),
+  ])
+  // 서버 default가 로컬/기존 장착을 덮지 않게
+  const fromProgress = progress.equippedThemeId
+  const fromProfile = profile.equippedThemeId
+  let equipped = fromProfile || DEFAULT_THEME
+  if (isBoardThemeId(String(fromProgress)) && fromProgress !== DEFAULT_THEME) {
+    equipped = fromProgress
+  } else if (isBoardThemeId(String(fromProfile)) && fromProfile !== DEFAULT_THEME) {
+    equipped = fromProfile
+  } else if (isBoardThemeId(String(fromProgress))) {
+    equipped = fromProgress
+  }
+
   return {
     ...profile,
     ...progressFields(progress),
+    ownedThemeIds: mergedOwned,
+    equippedThemeId: equipped,
   }
 }
 

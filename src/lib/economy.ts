@@ -40,17 +40,26 @@ export const SHOP_ITEMS: ShopItem[] = [
   },
 ]
 
-function economyPayload(nickname: string, progress: UserProgress) {
-  return {
+function economyPayload(
+  nickname: string,
+  progress: UserProgress,
+  opts: { includeThemes?: boolean } = {},
+) {
+  const includeThemes = opts.includeThemes !== false
+  const base = {
     nickname: nickname.slice(0, 20),
     hints: progress.hints,
     tokens: progress.tokens,
     lastDailyHintDate: progress.lastDailyHintDate,
     economyVersion: progress.economyVersion,
     claimedMailIds: progress.claimedMailIds,
+    updatedAt: serverTimestamp(),
+  }
+  if (!includeThemes) return base
+  return {
+    ...base,
     ownedThemeIds: progress.ownedThemeIds,
     equippedThemeId: progress.equippedThemeId,
-    updatedAt: serverTimestamp(),
   }
 }
 
@@ -96,7 +105,9 @@ export async function syncEconomy(
   const { progress, grantedHints, seededTokens } = applyDailyEconomyGrant(prev)
 
   if (grantedHints > 0 || seededTokens || progress.hints !== prev.hints) {
-    await setDoc(ref, economyPayload(nickname, progress), { merge: true })
+    await setDoc(ref, economyPayload(nickname, progress, { includeThemes: false }), {
+      merge: true,
+    })
   }
 
   return { progress, grantedHints }
@@ -127,7 +138,7 @@ export async function buyShopItem(
 
   await setDoc(
     doc(getDb(), USERS, uid),
-    economyPayload(nickname, progress),
+    economyPayload(nickname, progress, { includeThemes: false }),
     { merge: true },
   )
 

@@ -287,9 +287,7 @@ export function resolveActiveTheme(
   equipped: BoardThemeId,
   ownedIds: readonly string[],
   store: ThemeTrialStore | null,
-  preview: BoardThemeId | null,
 ): BoardThemeId {
-  if (preview && isBoardThemeId(preview)) return preview
   if (canUseTheme(equipped, ownedIds, store)) return equipped
   return DEFAULT_THEME
 }

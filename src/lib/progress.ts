@@ -135,8 +135,12 @@ export function parseUserProgress(
   }
 }
 
-function progressWriteFields(progress: UserProgress) {
-  return {
+function progressWriteFields(
+  progress: UserProgress,
+  opts: { includeThemes?: boolean } = {},
+) {
+  const includeThemes = opts.includeThemes !== false
+  const base = {
     xp: progress.xp,
     level: progress.level,
     weekKey: progress.weekKey,
@@ -152,6 +156,10 @@ function progressWriteFields(progress: UserProgress) {
     lastDailyHintDate: progress.lastDailyHintDate,
     economyVersion: progress.economyVersion,
     claimedMailIds: progress.claimedMailIds,
+  }
+  if (!includeThemes) return base
+  return {
+    ...base,
     ownedThemeIds: progress.ownedThemeIds,
     equippedThemeId: progress.equippedThemeId,
   }
@@ -664,7 +672,7 @@ export async function syncWeekProgress(
       ref,
       {
         nickname: nickname.slice(0, 20),
-        ...progressWriteFields(progress),
+        ...progressWriteFields(progress, { includeThemes: false }),
         updatedAt: serverTimestamp(),
       },
       { merge: true },
@@ -764,7 +772,7 @@ export async function awardMatchXp(
     ref,
     {
       nickname: input.nickname.slice(0, 20),
-      ...progressWriteFields(progress),
+      ...progressWriteFields(progress, { includeThemes: false }),
       updatedAt: serverTimestamp(),
     },
     { merge: true },

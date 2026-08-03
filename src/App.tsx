@@ -318,7 +318,7 @@ function App() {
         trialStore: boardTheme.trialStore,
         gamesLeftFor: boardTheme.gamesLeftFor,
         canTrial: boardTheme.canTrial,
-        onPreview: boardTheme.preview,
+        onPreview: () => {},
         onEquip: async (id) => {
           const owned = auth.user?.ownedThemeIds ?? []
           // 보유 테마만 클라우드 장착. 체험 테마는 로컬 장착
