@@ -11,8 +11,10 @@ import { ProfileModal } from './components/ProfileModal'
 import { RankingModal } from './components/RankingModal'
 import { MailboxModal } from './components/MailboxModal'
 import { ShopModal } from './components/ShopModal'
+import { ThemeModal } from './components/ThemeModal'
 import { DIFFICULTY_META } from './data/words'
 import { useAuth } from './hooks/useAuth'
+import { useBoardTheme } from './hooks/useBoardTheme'
 import { useGame, MAX_ATTEMPTS } from './hooks/useGame'
 import { formatSeconds, saveHistoryRecord } from './lib/history'
 import { shareChallenge } from './lib/challenge'
@@ -32,6 +34,8 @@ type XpFlash = {
 function App() {
   const game = useGame()
   const auth = useAuth()
+  const { themeId, setTheme } = useBoardTheme()
+  const themeAttr = themeId === 'default' ? undefined : themeId
   const [howto, setHowto] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [rankingOpen, setRankingOpen] = useState(false)
@@ -48,6 +52,7 @@ function App() {
   const [modePickerOpen, setModePickerOpen] = useState(false)
   const [shopOpen, setShopOpen] = useState(false)
   const [mailboxOpen, setMailboxOpen] = useState(false)
+  const [themeOpen, setThemeOpen] = useState(false)
   const [xpFlash, setXpFlash] = useState<XpFlash | null>(null)
   const [hintBusy, setHintBusy] = useState(false)
   const [hintPickMode, setHintPickMode] = useState(false)
@@ -205,7 +210,7 @@ function App() {
 
   if (game.dictError) {
     return (
-      <div className="app">
+      <div className="app" data-theme={themeAttr}>
         <div className="boot-card">
           <h1>사전을 불러오지 못했어요</h1>
           <p>{game.dictError}</p>
@@ -216,7 +221,7 @@ function App() {
 
   if (!game.dictReady) {
     return (
-      <div className="app">
+      <div className="app" data-theme={themeAttr}>
         <div className="boot-card">
           <div className="boot-spinner" aria-hidden />
           <h1>사전 불러오는 중</h1>
@@ -316,7 +321,7 @@ function App() {
     const homeWins = Math.max(auth.user?.wins ?? 0, localStats.wins)
 
     return (
-      <div className="app is-home">
+      <div className="app is-home" data-theme={themeAttr}>
         <header className="header">
           {headerAuthButton}
           <div className="brand brand-home" aria-hidden>
@@ -361,6 +366,15 @@ function App() {
                 }}
               >
                 주간 랭킹
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setThemeOpen(true)
+                  setMenuOpen(false)
+                }}
+              >
+                테마
               </button>
               <button
                 type="button"
@@ -438,6 +452,7 @@ function App() {
                     }
                   : undefined
               }
+              onOpenTheme={() => setThemeOpen(true)}
               onClaimReward={auth.user ? auth.claimReward : undefined}
               claimBusy={auth.busy}
             />
@@ -502,6 +517,12 @@ function App() {
             onClaim={auth.claimMail}
           />
         )}
+        <ThemeModal
+          open={themeOpen}
+          themeId={themeId}
+          onSelect={setTheme}
+          onClose={() => setThemeOpen(false)}
+        />
         {profileModal}
       </div>
     )
@@ -548,7 +569,7 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app" data-theme={themeAttr}>
       <header className="header">
         {headerAuthButton}
         <div className="brand">
@@ -603,6 +624,15 @@ function App() {
               }}
             >
               주간 랭킹
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setThemeOpen(true)
+                setMenuOpen(false)
+              }}
+            >
+              테마
             </button>
             <button
               type="button"
@@ -988,6 +1018,12 @@ function App() {
           onClaim={auth.claimMail}
         />
       )}
+      <ThemeModal
+        open={themeOpen}
+        themeId={themeId}
+        onSelect={setTheme}
+        onClose={() => setThemeOpen(false)}
+      />
       {profileModal}
     </div>
   )

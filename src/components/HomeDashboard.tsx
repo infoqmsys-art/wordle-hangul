@@ -20,6 +20,7 @@ type Props = {
   onOpenRanking: () => void
   onOpenShop?: () => void
   onOpenMailbox?: () => void
+  onOpenTheme?: () => void
   onClaimReward?: () => Promise<{ gained: number } | null>
   claimBusy?: boolean
 }
@@ -38,6 +39,7 @@ export function HomeDashboard({
   onOpenRanking,
   onOpenShop,
   onOpenMailbox,
+  onOpenTheme,
   onClaimReward,
   claimBusy,
 }: Props) {
@@ -192,6 +194,11 @@ export function HomeDashboard({
         <button type="button" className="home-quick-btn" onClick={onOpenRanking}>
           랭킹
         </button>
+        {onOpenTheme && (
+          <button type="button" className="home-quick-btn" onClick={onOpenTheme}>
+            테마
+          </button>
+        )}
         {profile && onOpenMailbox && (
           <button
             type="button"

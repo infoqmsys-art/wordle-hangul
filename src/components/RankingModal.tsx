@@ -10,22 +10,18 @@ import {
 import { getWeekKey } from '../lib/levels'
 import {
   loadWeeklyRanking,
-  loadXpRanking,
   type WeeklyRankEntry,
   type WeeklyRankMode,
-  type XpRankEntry,
 } from '../lib/progress'
 
 type Props = {
   open: boolean
   onClose: () => void
-  /** classic = 단어킹(누적), xp = 주간 판수/시도/시간 + 누적 XP */
+  /** classic = 단어킹(누적), xp = 이번 주 랭킹 */
   variant?: 'classic' | 'xp'
   initialDifficulty?: Difficulty
   onOpenHistory?: () => void
 }
-
-type XpTab = WeeklyRankMode | 'total'
 
 const MODE_LABEL: Record<RankMode, string> = {
   wins: '승수',
@@ -48,9 +44,8 @@ export function RankingModal({
 }: Props) {
   const [tab, setTab] = useState<Difficulty>(initialDifficulty)
   const [mode, setMode] = useState<RankMode>('wins')
-  const [xpTab, setXpTab] = useState<XpTab>('plays')
+  const [weekMode, setWeekMode] = useState<WeeklyRankMode>('plays')
   const [ranking, setRanking] = useState<RankEntry[]>([])
-  const [xpRanking, setXpRanking] = useState<XpRankEntry[]>([])
   const [weekRanking, setWeekRanking] = useState<WeeklyRankEntry[]>([])
   const [weekKey, setWeekKey] = useState(getWeekKey())
   const [loading, setLoading] = useState(false)
@@ -61,7 +56,7 @@ export function RankingModal({
     if (!open) return
     setTab(initialDifficulty)
     setMode('wins')
-    setXpTab('plays')
+    setWeekMode('plays')
     setHelpOpen(false)
   }, [open, initialDifficulty, variant])
 
@@ -71,7 +66,6 @@ export function RankingModal({
     setLoading(true)
     setError(null)
     setRanking([])
-    setXpRanking([])
     setWeekRanking([])
 
     if (!isSharedHistoryEnabled()) {
@@ -82,21 +76,15 @@ export function RankingModal({
 
     const load =
       variant === 'xp'
-        ? xpTab === 'total'
-          ? loadXpRanking().then((list) => {
+        ? (() => {
+            const key = getWeekKey()
+            setWeekKey(key)
+            return loadWeeklyRanking(key, weekMode).then((list) => {
               if (!alive) return
-              setXpRanking(list)
+              setWeekRanking(list)
               setError(null)
             })
-          : (() => {
-              const key = getWeekKey()
-              setWeekKey(key)
-              return loadWeeklyRanking(key, xpTab).then((list) => {
-                if (!alive) return
-                setWeekRanking(list)
-                setError(null)
-              })
-            })()
+          })()
         : loadRanking(tab, mode).then((list) => {
             if (!alive) return
             setRanking(list)
@@ -107,7 +95,6 @@ export function RankingModal({
       .catch(() => {
         if (!alive) return
         setRanking([])
-        setXpRanking([])
         setWeekRanking([])
         setError('랭킹을 불러오지 못했어요')
       })
@@ -118,23 +105,14 @@ export function RankingModal({
     return () => {
       alive = false
     }
-  }, [open, variant, tab, mode, xpTab])
+  }, [open, variant, tab, mode, weekMode])
 
   if (!open) return null
 
-  const isXp = variant === 'xp'
-  const isWeek = isXp && xpTab !== 'total'
-  const emptyLabel = isXp
-    ? xpTab === 'total'
-      ? '아직 누적 XP 기록이 없어요'
-      : '이번 주 기록이 아직 없어요'
+  const isWeek = variant === 'xp'
+  const emptyLabel = isWeek
+    ? '이번 주 기록이 아직 없어요'
     : `아직 ${DIFFICULTY_META[tab].label} 기록이 없어요`
-
-  const title = isXp
-    ? xpTab === 'total'
-      ? '푸들푸들 누적 XP'
-      : '푸들푸들 이번 주 랭킹'
-    : '푸들푸들 단어킹'
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -146,7 +124,9 @@ export function RankingModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="rank-title-row">
-          <h2 id="rank-title">{title}</h2>
+          <h2 id="rank-title">
+            {isWeek ? '푸들푸들 이번 주 랭킹' : '푸들푸들 단어킹'}
+          </h2>
           <button
             type="button"
             className="rank-help-btn"
@@ -160,33 +140,26 @@ export function RankingModal({
 
         {helpOpen && (
           <div className="rank-help-panel" role="note">
-            {isXp ? (
-              xpTab === 'total' ? (
+            {isWeek ? (
+              <>
                 <p>
-                  <strong>누적 XP</strong>는 계정 레벨용 전체 XP 순이에요. 주가
-                  바뀌어도 리셋되지 않습니다.
+                  <strong>이번 주 랭킹</strong>만 보여요. 판수 · 최단시도 ·
+                  최단시간 기준이며, 매주 월요일 09:00에 보드가 새로
+                  시작됩니다. 레벨·누적 전적은 홈에 그대로 남아요.
                 </p>
-              ) : (
-                <>
-                  <p>
-                    <strong>이번 주 랭킹</strong>은 로그인 유저의 주간{' '}
-                    <strong>판수 · 최단시도 · 최단시간</strong>이에요. 매주
-                    월요일 09:00에 보드가 새로 시작됩니다. (레벨 XP와 별개)
-                  </p>
-                  <p>
-                    <strong>최단시도·최단시간</strong>은 이번 주 승리 기록만
-                    집계해요. 주간 보상은 <strong>판수</strong> 순위로 월요일
-                    09:00에 정산됩니다.
-                  </p>
-                  <ul>
-                    <li>1위 +300 XP</li>
-                    <li>2위 +180 XP</li>
-                    <li>3위 +100 XP</li>
-                    <li>4~10위 +40 XP</li>
-                    <li>그 외 참가 +15 XP</li>
-                  </ul>
-                </>
-              )
+                <p>
+                  <strong>최단시도·최단시간</strong>은 이번 주 승리만
+                  집계하고, 주간 보상은 <strong>판수</strong> 순위로 월요일
+                  09:00에 정산됩니다.
+                </p>
+                <ul>
+                  <li>1위 +300 XP</li>
+                  <li>2위 +180 XP</li>
+                  <li>3위 +100 XP</li>
+                  <li>4~10위 +40 XP</li>
+                  <li>그 외 참가 +15 XP</li>
+                </ul>
+              </>
             ) : (
               <>
                 <p>
@@ -202,43 +175,33 @@ export function RankingModal({
           </div>
         )}
 
-        {isXp && (
-          <div
-            className="rank-mode-tabs rank-week-tabs"
-            role="tablist"
-            aria-label="주간·누적"
-          >
-            {(Object.keys(WEEK_MODE_LABEL) as WeeklyRankMode[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="tab"
-                aria-selected={xpTab === m}
-                className={xpTab === m ? 'on' : ''}
-                onClick={() => setXpTab(m)}
-              >
-                {WEEK_MODE_LABEL[m]}
-              </button>
-            ))}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={xpTab === 'total'}
-              className={xpTab === 'total' ? 'on' : ''}
-              onClick={() => setXpTab('total')}
-            >
-              누적XP
-            </button>
-          </div>
-        )}
-
         {isWeek && (
-          <p className="rank-week-key" aria-label="주간 키">
-            {weekKey} · 월 09:00 기준
-          </p>
+          <>
+            <div
+              className="rank-mode-tabs rank-week-tabs"
+              role="tablist"
+              aria-label="이번 주 기준"
+            >
+              {(Object.keys(WEEK_MODE_LABEL) as WeeklyRankMode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={weekMode === m}
+                  className={weekMode === m ? 'on' : ''}
+                  onClick={() => setWeekMode(m)}
+                >
+                  {WEEK_MODE_LABEL[m]}
+                </button>
+              ))}
+            </div>
+            <p className="rank-week-key" aria-label="주간 키">
+              {weekKey} · 월 09:00 기준
+            </p>
+          </>
         )}
 
-        {!isXp && (
+        {!isWeek && (
           <div className="rank-filters">
             <div className="rank-tabs" role="tablist" aria-label="난이도">
               <button
@@ -289,7 +252,7 @@ export function RankingModal({
               <ol className="rank-list">
                 {weekRanking.map((r) => (
                   <li
-                    key={`week-${xpTab}-${r.uid}`}
+                    key={`week-${weekMode}-${r.uid}`}
                     className={`rank-item${r.rank <= 3 ? ` top-${r.rank}` : ''}`}
                   >
                     <span className="rank-num" aria-label={`${r.rank}위`}>
@@ -297,30 +260,6 @@ export function RankingModal({
                     </span>
                     <strong className="rank-name">{r.nickname}</strong>
                     <span className="rank-wins">{r.scoreLabel}</span>
-                  </li>
-                ))}
-              </ol>
-            )
-          ) : isXp ? (
-            xpRanking.length === 0 ? (
-              <p className="history-empty">{emptyLabel}</p>
-            ) : (
-              <ol className="rank-list">
-                {xpRanking.map((r) => (
-                  <li
-                    key={`xp-${r.uid}`}
-                    className={`rank-item${r.rank <= 3 ? ` top-${r.rank}` : ''}`}
-                  >
-                    <span className="rank-num" aria-label={`${r.rank}위`}>
-                      {r.rank}
-                    </span>
-                    <strong className="rank-name">
-                      {r.nickname}
-                      <span className="rank-level"> Lv.{r.level}</span>
-                    </strong>
-                    <span className="rank-wins">
-                      {r.xp.toLocaleString('ko-KR')} XP
-                    </span>
                   </li>
                 ))}
               </ol>
@@ -349,7 +288,7 @@ export function RankingModal({
         </div>
 
         <div className="rank-footer">
-          {onOpenHistory && !isXp && (
+          {onOpenHistory && !isWeek && (
             <div className="rank-footer-links">
               <button
                 type="button"
