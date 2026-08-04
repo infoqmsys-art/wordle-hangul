@@ -8,7 +8,6 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  updateDoc,
 } from 'firebase/firestore'
 import type { Difficulty } from '../data/words'
 import {

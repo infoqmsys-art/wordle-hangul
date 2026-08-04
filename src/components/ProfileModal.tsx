@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { UserProfile } from '../lib/auth'
 import { formatSeconds, getLastName } from '../lib/history'
+import { DIFFICULTY_META } from '../data/words'
 import {
-  DIFFICULTY_META,
   getHold,
   holdXpBarColor,
   isRewardClaimable,
