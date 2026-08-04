@@ -3,13 +3,11 @@ import type { UserProfile } from '../lib/auth'
 import {
   displayWeekStat,
   getHold,
-  holdImageSrc,
   holdXpBarColor,
-  isRewardClaimable,
   progressFromXp,
 } from '../lib/levels'
 import { hasUnclaimedMail } from '../lib/mailbox'
-import { HoldBadge, HoldTrail } from './HoldBadge'
+import { HoldBadge, HoldPreview, HoldTrail } from './HoldBadge'
 
 type Props = {
   profile: UserProfile | null
@@ -20,8 +18,6 @@ type Props = {
   onOpenRanking: () => void
   onOpenShop?: () => void
   onOpenMailbox?: () => void
-  onClaimReward?: () => Promise<{ gained: number } | null>
-  claimBusy?: boolean
 }
 
 function formatToday(): string {
@@ -38,13 +34,9 @@ export function HomeDashboard({
   onOpenRanking,
   onOpenShop,
   onOpenMailbox,
-  onClaimReward,
-  claimBusy,
 }: Props) {
-  const [holdPreview, setHoldPreview] = useState(false)
+  const [previewLevel, setPreviewLevel] = useState<number | null>(null)
   const levelView = profile ? progressFromXp(profile.xp) : null
-  const pending = profile?.pendingWeekReward ?? null
-  const canClaim = isRewardClaimable(pending)
   const losses = Math.max(0, played - wins)
   const mailReady = Boolean(
     profile && hasUnclaimedMail(profile.claimedMailIds ?? []),
@@ -64,7 +56,7 @@ export function HomeDashboard({
             <HoldBadge
               level={profile.level}
               size="lg"
-              onClick={() => setHoldPreview(true)}
+              onClick={() => setPreviewLevel(profile.level)}
             />
             <div className="home-level-text">
               <p className="home-card-kicker">{profile.nickname}</p>
@@ -106,7 +98,10 @@ export function HomeDashboard({
               : `다음: Lv.${levelView.level + 1} ${getHold(levelView.level + 1).name}`}
             {streak >= 2 ? ` · ${streak}연승` : ''}
           </p>
-          <HoldTrail currentLevel={levelView.level} />
+          <HoldTrail
+            currentLevel={levelView.level}
+            onSelectReached={setPreviewLevel}
+          />
         </section>
       ) : (
         <section className="home-card">
@@ -118,45 +113,23 @@ export function HomeDashboard({
         </section>
       )}
 
-      <section className="home-record" aria-label="누적 전적">
-        <div>
-          <span>판수</span>
-          <strong>{played}</strong>
-        </div>
-        <div>
-          <span>승</span>
-          <strong>{wins}</strong>
-        </div>
-        <div>
-          <span>패</span>
-          <strong>{losses}</strong>
+      <section className="home-record" aria-label="누적">
+        <p className="home-record-title">누적</p>
+        <div className="home-record-stats">
+          <div>
+            <span>판수</span>
+            <strong>{played}</strong>
+          </div>
+          <div>
+            <span>승</span>
+            <strong>{wins}</strong>
+          </div>
+          <div>
+            <span>패</span>
+            <strong>{losses}</strong>
+          </div>
         </div>
       </section>
-
-      {pending && (
-        <section
-          className={`week-reward-card home-reward${canClaim ? ' is-ready' : ''}${
-            pending.claimed ? ' is-claimed' : ''
-          }`}
-        >
-          <div>
-            <strong>지난주 {pending.rank}위</strong>
-            <span>+{pending.xp} XP</span>
-          </div>
-          {canClaim && onClaimReward ? (
-            <button
-              type="button"
-              className="pill-btn challenge"
-              disabled={claimBusy}
-              onClick={() => void onClaimReward()}
-            >
-              {claimBusy ? '받는 중...' : '받기'}
-            </button>
-          ) : pending.claimed ? (
-            <span className="week-reward-state">받음</span>
-          ) : null}
-        </section>
-      )}
 
       {profile && (
         <>
@@ -211,36 +184,11 @@ export function HomeDashboard({
         </button>
       </div>
 
-      {holdPreview && profile && levelView && (
-        <div
-          className="modal-backdrop hold-preview-backdrop"
-          role="presentation"
-          onClick={() => setHoldPreview(false)}
-        >
-          <div
-            className="hold-preview-pop"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Lv.${levelView.level} ${levelView.hold.name}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              src={holdImageSrc(profile.level)}
-              alt={`Lv.${levelView.level} ${levelView.hold.name}`}
-              draggable={false}
-            />
-            <p>
-              Lv.{levelView.level} {levelView.hold.name}
-            </p>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setHoldPreview(false)}
-            >
-              닫기
-            </button>
-          </div>
-        </div>
+      {previewLevel != null && (
+        <HoldPreview
+          level={previewLevel}
+          onClose={() => setPreviewLevel(null)}
+        />
       )}
     </div>
   )

@@ -1,4 +1,9 @@
 import { dailyIndex, formatDateKey } from '../lib/game'
+import {
+  readCachedDictionary,
+  writeCachedDictionary,
+  type DictMeta,
+} from '../lib/dictCache'
 
 export type Difficulty = 'easy' | 'hard'
 
@@ -42,37 +47,64 @@ function jamoKey(jamo: string[]): string {
   return jamo.join('')
 }
 
+async function fetchDictMeta(base: string): Promise<DictMeta | null> {
+  try {
+    const res = await fetch(`${base}dict/meta.json`, { cache: 'no-cache' })
+    if (!res.ok) return null
+    return (await res.json()) as DictMeta
+  } catch {
+    return null
+  }
+}
+
+async function fetchDictionaryFromNetwork(base: string): Promise<Dictionary> {
+  const [guessRes, a5Res, a7Res, defRes] = await Promise.all([
+    fetch(`${base}dict/guesses.json`),
+    fetch(`${base}dict/answers-5.json`),
+    fetch(`${base}dict/answers-7.json`),
+    fetch(`${base}dict/definitions.json`),
+  ])
+  if (!guessRes.ok || !a5Res.ok || !a7Res.ok) {
+    throw new Error('사전 데이터를 불러오지 못했어요')
+  }
+  const answers5 = (await a5Res.json()) as WordEntry[]
+  const answers7 = (await a7Res.json()) as WordEntry[]
+  let definitions: Record<string, string> = {}
+  if (defRes.ok) {
+    definitions = (await defRes.json()) as Record<string, string>
+  } else {
+    for (const entry of [...answers5, ...answers7]) {
+      if (entry.definition) definitions[entry.word] = entry.definition
+    }
+  }
+  return {
+    guesses: (await guessRes.json()) as Record<string, string>,
+    answers5,
+    answers7,
+    definitions,
+    source: '표준국어대사전 명사(COMMON) + 일상 친숙어',
+  }
+}
+
 export async function loadDictionary(): Promise<Dictionary> {
   if (cached) return cached
   if (loading) return loading
 
   loading = (async () => {
     const base = import.meta.env.BASE_URL
-    const [guessRes, a5Res, a7Res, defRes] = await Promise.all([
-      fetch(`${base}dict/guesses.json`),
-      fetch(`${base}dict/answers-5.json`),
-      fetch(`${base}dict/answers-7.json`),
-      fetch(`${base}dict/definitions.json`),
-    ])
-    if (!guessRes.ok || !a5Res.ok || !a7Res.ok) {
-      throw new Error('사전 데이터를 불러오지 못했어요')
-    }
-    const answers5 = (await a5Res.json()) as WordEntry[]
-    const answers7 = (await a7Res.json()) as WordEntry[]
-    let definitions: Record<string, string> = {}
-    if (defRes.ok) {
-      definitions = (await defRes.json()) as Record<string, string>
-    } else {
-      for (const entry of [...answers5, ...answers7]) {
-        if (entry.definition) definitions[entry.word] = entry.definition
+    const meta = await fetchDictMeta(base)
+    if (meta?.version) {
+      const fromIdb = await readCachedDictionary(meta.version)
+      if (fromIdb) {
+        cached = fromIdb
+        return cached
       }
     }
-    cached = {
-      guesses: (await guessRes.json()) as Record<string, string>,
-      answers5,
-      answers7,
-      definitions,
-      source: '표준국어대사전 명사(COMMON) + 일상 친숙어',
+
+    const dict = await fetchDictionaryFromNetwork(base)
+    cached = dict
+    if (meta?.version) {
+      void writeCachedDictionary(meta.version, dict)
     }
     return cached
   })()

@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   BOARD_THEMES,
   THEME_TRIAL_GAMES,
@@ -28,6 +30,10 @@ export type ThemeShopPanelProps = {
   onTrial: (id: BoardThemeId) => void
   onNeedLogin: () => void
 }
+
+type ThemeConfirm =
+  | { kind: 'trial'; id: BoardThemeId; name: string }
+  | { kind: 'buy'; id: BoardThemeId; name: string; cost: number }
 
 function MiniPreview({ themeId }: { themeId: BoardThemeId }) {
   return (
@@ -61,10 +67,36 @@ export function ThemeShopPanel({
   void tokens
   void onPreview
   void gamesLeftFor
+  const [confirm, setConfirm] = useState<ThemeConfirm | null>(null)
   const active = trial ?? getActiveTrial(trialStore)
   const trialName = active
     ? (getBoardTheme(active.themeId)?.name ?? active.themeId)
     : ''
+
+  const requestBuy = (id: BoardThemeId, name: string, cost: number) => {
+    if (!loggedIn) {
+      onNeedLogin()
+      return
+    }
+    setConfirm({ kind: 'buy', id, name, cost })
+  }
+
+  const requestTrial = (id: BoardThemeId, name: string) => {
+    setConfirm({ kind: 'trial', id, name })
+  }
+
+  const closeConfirm = () => setConfirm(null)
+
+  const runConfirm = () => {
+    if (!confirm) return
+    const next = confirm
+    setConfirm(null)
+    if (next.kind === 'trial') {
+      onTrial(next.id)
+      return
+    }
+    void onBuy(next.id)
+  }
 
   return (
     <div className="theme-shop-panel">
@@ -101,17 +133,20 @@ export function ThemeShopPanel({
                   <MiniPreview themeId={theme.id} />
                   <span className="theme-item-text">
                     <strong>{theme.name}</strong>
-                    <span className="theme-price">
-                      {theme.tokenCost <= 0
-                        ? '무료'
-                        : owned
-                          ? '보유'
-                          : isThisTrial
-                            ? `체험 ${active!.gamesLeft}/3`
-                            : usedUp
-                              ? '체험 완료'
-                              : `가격 : ${theme.tokenCost}`}
-                    </span>
+                    {(theme.tokenCost <= 0 ||
+                      owned ||
+                      isThisTrial ||
+                      usedUp) && (
+                      <span className="theme-status">
+                        {theme.tokenCost <= 0
+                          ? '무료'
+                          : owned
+                            ? '보유'
+                            : isThisTrial
+                              ? `체험 ${active!.gamesLeft}/3`
+                              : '체험 완료'}
+                      </span>
+                    )}
                   </span>
                 </div>
 
@@ -134,15 +169,12 @@ export function ThemeShopPanel({
                       type="button"
                       className="pill-btn challenge"
                       disabled={busy}
-                      onClick={() => {
-                        if (!loggedIn) {
-                          onNeedLogin()
-                          return
-                        }
-                        void onBuy(theme.id)
-                      }}
+                      aria-label={`${theme.tokenCost}초크로 구매`}
+                      onClick={() =>
+                        requestBuy(theme.id, theme.name, theme.tokenCost)
+                      }
                     >
-                      {loggedIn ? '구매' : '로그인 후 구매'}
+                      {loggedIn ? `${theme.tokenCost}초크` : '로그인'}
                     </button>
                   ) : (
                     <>
@@ -151,7 +183,7 @@ export function ThemeShopPanel({
                           type="button"
                           className="pill-btn"
                           disabled={busy || trialLocked}
-                          onClick={() => onTrial(theme.id)}
+                          onClick={() => requestTrial(theme.id, theme.name)}
                         >
                           {THEME_TRIAL_GAMES}판 체험
                         </button>
@@ -160,15 +192,12 @@ export function ThemeShopPanel({
                         type="button"
                         className="pill-btn challenge"
                         disabled={busy || (trialLocked && !isThisTrial)}
-                        onClick={() => {
-                          if (!loggedIn) {
-                            onNeedLogin()
-                            return
-                          }
-                          void onBuy(theme.id)
-                        }}
+                        aria-label={`${theme.tokenCost}초크로 구매`}
+                        onClick={() =>
+                          requestBuy(theme.id, theme.name, theme.tokenCost)
+                        }
                       >
-                        {loggedIn ? '구매' : '로그인 후 구매'}
+                        {loggedIn ? `${theme.tokenCost}초크` : '로그인'}
                       </button>
                     </>
                   )}
@@ -178,6 +207,53 @@ export function ThemeShopPanel({
           )
         })}
       </ul>
+
+      {confirm &&
+        createPortal(
+          <div
+            className="modal-backdrop theme-confirm-backdrop"
+            role="presentation"
+            onClick={closeConfirm}
+          >
+            <div
+              className="modal hint-confirm-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="theme-confirm-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 id="theme-confirm-title">
+                {confirm.kind === 'trial'
+                  ? `[${confirm.name}] 테마를 ${THEME_TRIAL_GAMES}판 체험할까요?`
+                  : `[${confirm.name}] 테마를 구매하시겠습니까?`}
+              </h2>
+              <p className="modal-sub">
+                {confirm.kind === 'trial'
+                  ? `${THEME_TRIAL_GAMES}판 체험 동안 테마가 고정됩니다.`
+                  : `${confirm.cost}초크가 차감됩니다.`}
+              </p>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy}
+                  onClick={closeConfirm}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={busy}
+                  onClick={runConfirm}
+                >
+                  {confirm.kind === 'trial' ? '체험' : '구매'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

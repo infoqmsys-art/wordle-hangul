@@ -219,12 +219,12 @@ async function fetchRecordsSnap() {
       query(
         collection(getDb(), COLLECTION),
         orderBy('savedAt', 'desc'),
-        limit(1000),
+        limit(3000),
       ),
     )
   } catch {
     // savedAt 인덱스가 없거나 일부 문서에 필드가 없어도 랭킹은 보이게
-    return await getDocs(query(collection(getDb(), COLLECTION), limit(1000)))
+    return await getDocs(query(collection(getDb(), COLLECTION), limit(3000)))
   }
 }
 

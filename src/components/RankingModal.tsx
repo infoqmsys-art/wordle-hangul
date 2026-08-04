@@ -79,7 +79,7 @@ export function RankingModal({
 
     const load =
       scope === 'week'
-        ? loadWeeklyRanking(getWeekKey(), weekMode).then((list) => {
+        ? loadWeeklyRanking(getWeekKey(), weekMode, tab).then((list) => {
             if (!alive) return
             setWeekRanking(list)
             setError(null)
@@ -112,7 +112,7 @@ export function RankingModal({
   const weekKey = getWeekKey()
   const weekRangeLabel = formatWeekRangeLabel(weekKey)
   const emptyLabel = isWeek
-    ? '이번 주 기록이 아직 없어요'
+    ? `이번 주 ${DIFFICULTY_META[tab].label} 기록이 아직 없어요`
     : `아직 ${DIFFICULTY_META[tab].label} 기록이 없어요`
 
   return (
@@ -171,12 +171,13 @@ export function RankingModal({
             {isWeek ? (
               <>
                 <p>
-                  <strong>이번주</strong>는 판수 · 최단시도 · 최단시간
-                  순위예요. 매주 월요일 09:00에 새로 시작됩니다.
+                  <strong>이번주</strong>는 쉬움·어려움을 따로 집계해요. 판수 ·
+                  최단시도 · 최단시간 순위이며, 매주 월요일 09:00에 새로
+                  시작됩니다.
                 </p>
                 <p>
-                  최단시도·최단시간은 이번 주 승리만 집계하고, 주간 보상은
-                  판수 순위로 정산됩니다.
+                  최단시도·최단시간은 해당 난이도 이번 주 승리만 집계하고, 주간
+                  보상도 난이도별 판수 순위로 각각 정산됩니다.
                 </p>
                 <ul>
                   <li>1위 +300 XP</li>
@@ -201,47 +202,47 @@ export function RankingModal({
           </div>
         )}
 
-        {isWeek ? (
-          <div
-            className="rank-mode-tabs rank-week-tabs"
-            role="tablist"
-            aria-label="이번주 기준"
-          >
-            {(Object.keys(WEEK_MODE_LABEL) as WeeklyRankMode[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="tab"
-                aria-selected={weekMode === m}
-                className={weekMode === m ? 'on' : ''}
-                onClick={() => setWeekMode(m)}
-              >
-                {WEEK_MODE_LABEL[m]}
-              </button>
-            ))}
+        <div className="rank-filters">
+          <div className="rank-tabs" role="tablist" aria-label="난이도">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'easy'}
+              className={tab === 'easy' ? 'on' : ''}
+              onClick={() => setTab('easy')}
+            >
+              쉬움
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'hard'}
+              className={tab === 'hard' ? 'on' : ''}
+              onClick={() => setTab('hard')}
+            >
+              어려움
+            </button>
           </div>
-        ) : (
-          <div className="rank-filters">
-            <div className="rank-tabs" role="tablist" aria-label="난이도">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === 'easy'}
-                className={tab === 'easy' ? 'on' : ''}
-                onClick={() => setTab('easy')}
-              >
-                쉬움
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === 'hard'}
-                className={tab === 'hard' ? 'on' : ''}
-                onClick={() => setTab('hard')}
-              >
-                어려움
-              </button>
+          {isWeek ? (
+            <div
+              className="rank-mode-tabs rank-week-tabs"
+              role="tablist"
+              aria-label="이번주 기준"
+            >
+              {(Object.keys(WEEK_MODE_LABEL) as WeeklyRankMode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={weekMode === m}
+                  className={weekMode === m ? 'on' : ''}
+                  onClick={() => setWeekMode(m)}
+                >
+                  {WEEK_MODE_LABEL[m]}
+                </button>
+              ))}
             </div>
+          ) : (
             <div className="rank-mode-tabs" role="tablist" aria-label="기준">
               {(Object.keys(MODE_LABEL) as RankMode[]).map((m) => (
                 <button
@@ -256,8 +257,8 @@ export function RankingModal({
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <div className="rank-body">
           {loading ? (
@@ -271,7 +272,7 @@ export function RankingModal({
               <ol className="rank-list">
                 {weekRanking.map((r) => (
                   <li
-                    key={`week-${weekMode}-${r.uid}`}
+                    key={`week-${tab}-${weekMode}-${r.uid}`}
                     className={`rank-item${r.rank <= 3 ? ` top-${r.rank}` : ''}`}
                   >
                     <span className="rank-num" aria-label={`${r.rank}위`}>

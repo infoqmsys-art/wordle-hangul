@@ -397,8 +397,21 @@ export function useGame() {
   }, [])
 
   const startGame = useCallback(
-    (mode: PlayMode, diff: Difficulty) => {
-      if (!dict) return
+    async (mode: PlayMode, diff: Difficulty) => {
+      let loaded = dict
+      if (!loaded) {
+        try {
+          loaded = await loadDictionary()
+          setDict(loaded)
+          setDictError(null)
+        } catch (err: unknown) {
+          const message =
+            err instanceof Error ? err.message : '사전을 불러오지 못했어요'
+          setDictError(message)
+          showToast(message)
+          return
+        }
+      }
       if (mode === 'daily' && isDailyDone(diff)) {
         showToast('오늘은 이미 플레이했어요')
         return
@@ -407,8 +420,8 @@ export function useGame() {
       setChallengeMode(false)
       const answer =
         mode === 'daily'
-          ? pickDailyAnswer(dict, diff)
-          : pickPracticeAnswer(dict, diff, loadRecentWords())
+          ? pickDailyAnswer(loaded, diff)
+          : pickPracticeAnswer(loaded, diff, loadRecentWords())
       applyRound(mode, diff, answer)
       if (mode === 'practice') pushRecentWord(answer.word)
       if (mode === 'daily') {
@@ -725,7 +738,7 @@ export function useGame() {
     startedAt,
     dictReady: Boolean(dict),
     ready: Boolean(dict && answerEntry && difficulty && playMode),
-    needMode: Boolean(dict) && (!difficulty || !playMode),
+    needMode: !difficulty || !playMode,
     dictError,
     playMode,
     difficulty,

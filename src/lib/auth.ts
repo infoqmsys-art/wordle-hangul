@@ -47,7 +47,7 @@ export type UserProfile = {
   weekBestAttempts: number
   weekBestSeconds: number
   lastDailyBonusDate: string
-  pendingWeekReward: PendingWeekReward | null
+  pendingWeekRewards: PendingWeekReward[]
   hints: number
   tokens: number
   lastDailyHintDate: string
@@ -72,7 +72,7 @@ function progressFields(p: UserProgress) {
     weekBestAttempts: p.weekBestAttempts,
     weekBestSeconds: p.weekBestSeconds,
     lastDailyBonusDate: p.lastDailyBonusDate,
-    pendingWeekReward: p.pendingWeekReward,
+    pendingWeekRewards: p.pendingWeekRewards,
     hints: p.hints,
     tokens: p.tokens,
     lastDailyHintDate: p.lastDailyHintDate,
@@ -311,28 +311,29 @@ export async function resumeExistingProfile(
 
   activeUid = user.uid
 
-  let progress = cloud.progress
+  return toProfile(user, cloud.nickname, stats, cloud.progress)
+}
+
+/** 로그인 직후 UI를 먼저 연 뒤, 경제/주간 동기화를 백그라운드로 맞춤 */
+export async function refreshProfileInBackground(
+  user: User,
+  nickname: string,
+): Promise<UserProfile | null> {
+  if (!activeUid || activeUid !== user.uid) return null
+
+  let progress: UserProgress
   try {
-    progress = (await syncEconomy(user.uid, cloud.nickname)).progress
+    progress = (
+      await syncEconomy(user.uid, nickname, { reconcileFromRecords: false })
+    ).progress
   } catch {
-    /* offline */
+    return null
   }
 
-  try {
-    await saveProfileWithUniqueNickname({
-      uid: user.uid,
-      nickname: cloud.nickname,
-      previousNickname: cloud.nickname,
-      stats,
-      progress,
-      email: user.email,
-      photoURL: user.photoURL,
-    })
-  } catch {
-    /* keep local profile if nickname registry fails */
-  }
+  if (!activeUid || activeUid !== user.uid) return null
 
-  return toProfile(user, cloud.nickname, stats, progress)
+  const local = getPersonalStats()
+  return toProfile(user, nickname, local, progress)
 }
 
 async function completeNicknameSetup(
@@ -438,7 +439,7 @@ export async function updateNickname(
     weekBestAttempts: current.weekBestAttempts ?? 0,
     weekBestSeconds: current.weekBestSeconds ?? 0,
     lastDailyBonusDate: current.lastDailyBonusDate,
-    pendingWeekReward: current.pendingWeekReward,
+    pendingWeekRewards: current.pendingWeekRewards ?? [],
     hints: current.hints,
     tokens: current.tokens,
     lastDailyHintDate: current.lastDailyHintDate,
@@ -551,6 +552,13 @@ export function subscribeAuth(
       const existing = await resumeExistingProfile(user)
       if (existing) {
         onChange({ status: 'ready', profile: existing })
+        void refreshProfileInBackground(user, existing.nickname).then(
+          (fresh) => {
+            if (fresh && activeUid === user.uid) {
+              onChange({ status: 'ready', profile: fresh })
+            }
+          },
+        )
         return
       }
       // 가입 직후 프로필 저장 중이면 건드리지 않음

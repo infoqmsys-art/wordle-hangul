@@ -305,6 +305,8 @@ export type PendingWeekReward = {
   xp: number
   claimed: boolean
   expiresAt: number
+  /** 없으면 예전 합산 보상 */
+  difficulty?: 'easy' | 'hard'
 }
 
 export function isRewardClaimable(
@@ -322,4 +324,20 @@ export function isRewardExpired(
 ): boolean {
   if (!pending || pending.claimed) return false
   return nowMs >= pending.expiresAt
+}
+
+export function firstClaimableReward(
+  rewards: PendingWeekReward[] | null | undefined,
+  nowMs: number = Date.now(),
+): PendingWeekReward | null {
+  if (!rewards?.length) return null
+  return rewards.find((r) => isRewardClaimable(r, nowMs)) ?? null
+}
+
+export function pruneWeekRewards(
+  rewards: PendingWeekReward[] | null | undefined,
+  nowMs: number = Date.now(),
+): PendingWeekReward[] {
+  if (!rewards?.length) return []
+  return rewards.filter((r) => r.claimed || nowMs < r.expiresAt)
 }

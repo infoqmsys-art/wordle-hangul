@@ -14,6 +14,7 @@ import type { Difficulty } from '../data/words'
 import {
   assignCompetitionRanks,
   calcMatchXp,
+  firstClaimableReward,
   getClaimExpiresAt,
   getWeekKey,
   getWeekStartMs,
@@ -22,6 +23,7 @@ import {
   kstDateKey,
   levelFromTotalXp,
   progressFromXp,
+  pruneWeekRewards,
   rewardXpForRank,
   tokensForMatch,
   type PendingWeekReward,
@@ -53,7 +55,8 @@ export type UserProgress = {
   /** 이번 주 승리 중 최단 초 (없으면 0) */
   weekBestSeconds: number
   lastDailyBonusDate: string
-  pendingWeekReward: PendingWeekReward | null
+  /** 지난주 난이도별 주간 보상 (쉬움/어려움 각각) */
+  pendingWeekRewards: PendingWeekReward[]
   /** 보유 힌트 (계정, 쌓임) */
   hints: number
   /** 상점 화폐 */
@@ -80,7 +83,7 @@ export const emptyProgress = (): UserProgress => ({
   weekBestAttempts: 0,
   weekBestSeconds: 0,
   lastDailyBonusDate: '',
-  pendingWeekReward: null,
+  pendingWeekRewards: [],
   hints: 0,
   tokens: 0,
   lastDailyHintDate: '',
@@ -90,9 +93,7 @@ export const emptyProgress = (): UserProgress => ({
   equippedThemeId: 'default',
 })
 
-function parsePending(
-  raw: unknown,
-): PendingWeekReward | null {
+function parsePending(raw: unknown): PendingWeekReward | null {
   if (!raw || typeof raw !== 'object') return null
   const data = raw as Record<string, unknown>
   const weekKey = String(data.weekKey ?? '')
@@ -101,7 +102,32 @@ function parsePending(
   const claimed = Boolean(data.claimed)
   const expiresAt = Number(data.expiresAt ?? 0)
   if (!weekKey || rank <= 0 || xp < 0 || !expiresAt) return null
-  return { weekKey, rank, xp, claimed, expiresAt }
+  const difficulty =
+    data.difficulty === 'hard'
+      ? 'hard'
+      : data.difficulty === 'easy'
+        ? 'easy'
+        : undefined
+  return { weekKey, rank, xp, claimed, expiresAt, difficulty }
+}
+
+function parsePendingList(data: Record<string, unknown>): PendingWeekReward[] {
+  const list: PendingWeekReward[] = []
+  if (Array.isArray(data.pendingWeekRewards)) {
+    for (const item of data.pendingWeekRewards) {
+      const parsed = parsePending(item)
+      if (parsed) list.push(parsed)
+    }
+  }
+  const legacy = parsePending(data.pendingWeekReward)
+  if (legacy) {
+    const key = `${legacy.weekKey}:${legacy.difficulty ?? 'legacy'}`
+    const exists = list.some(
+      (r) => `${r.weekKey}:${r.difficulty ?? 'legacy'}` === key,
+    )
+    if (!exists) list.push(legacy)
+  }
+  return pruneWeekRewards(list)
 }
 
 export function parseUserProgress(
@@ -118,7 +144,7 @@ export function parseUserProgress(
     weekBestAttempts: Math.max(0, Number(data.weekBestAttempts ?? 0)),
     weekBestSeconds: Math.max(0, Number(data.weekBestSeconds ?? 0)),
     lastDailyBonusDate: String(data.lastDailyBonusDate ?? ''),
-    pendingWeekReward: parsePending(data.pendingWeekReward),
+    pendingWeekRewards: parsePendingList(data),
     hints: Math.max(0, Number(data.hints ?? 0)),
     tokens: Math.max(0, Number(data.tokens ?? 0)),
     lastDailyHintDate: String(data.lastDailyHintDate ?? ''),
@@ -150,7 +176,8 @@ function progressWriteFields(
     weekBestAttempts: progress.weekBestAttempts,
     weekBestSeconds: progress.weekBestSeconds,
     lastDailyBonusDate: progress.lastDailyBonusDate,
-    pendingWeekReward: progress.pendingWeekReward,
+    pendingWeekRewards: progress.pendingWeekRewards,
+    pendingWeekReward: firstClaimableReward(progress.pendingWeekRewards),
     hints: progress.hints,
     tokens: progress.tokens,
     lastDailyHintDate: progress.lastDailyHintDate,
@@ -299,11 +326,11 @@ async function fetchPracticeRecords(): Promise<PracticeRec[]> {
       query(
         collection(getDb(), RECORDS),
         orderBy('savedAt', 'desc'),
-        limit(1000),
+        limit(3000),
       ),
     )
   } catch {
-    snap = await getDocs(query(collection(getDb(), RECORDS), limit(1000)))
+    snap = await getDocs(query(collection(getDb(), RECORDS), limit(3000)))
   }
 
   const out: PracticeRec[] = []
@@ -333,10 +360,11 @@ async function fetchPracticeRecords(): Promise<PracticeRec[]> {
   return out
 }
 
-/** 해당 주(월 09:00 KST~) 연습 기록으로 주간 스탯 집계 */
+/** 해당 주(월 09:00 KST~) 기록으로 주간 스탯 집계 */
 function aggregateWeekFromRecords(
   records: PracticeRec[],
   weekKey: string,
+  difficulty?: Difficulty,
 ): WeekEntryRaw[] {
   const start = getWeekStartMs(weekKey)
   if (!start) return []
@@ -344,6 +372,7 @@ function aggregateWeekFromRecords(
 
   const byUid = new Map<string, PracticeRec[]>()
   for (const r of records) {
+    if (difficulty && r.difficulty !== difficulty) continue
     if (r.savedAt < start || r.savedAt >= end) continue
     const list = byUid.get(r.uid) ?? []
     list.push(r)
@@ -437,12 +466,17 @@ function mergeWeekEntries(a: WeekEntryRaw[], b: WeekEntryRaw[]): WeekEntryRaw[] 
   return [...map.values()]
 }
 
-async function loadWeekEntries(weekKey: string): Promise<WeekEntryRaw[]> {
+async function loadWeekEntries(
+  weekKey: string,
+  difficulty?: Difficulty,
+): Promise<WeekEntryRaw[]> {
   if (!isFirebaseConfigured() || !weekKey) return []
-  const [stored, records] = await Promise.all([
-    loadWeekEntriesRaw(weekKey),
-    fetchPracticeRecords(),
-  ])
+  const records = await fetchPracticeRecords()
+  // 난이도별로 볼 때는 records만 씀 (weeklyRank stored는 합산이라 섞으면 안 됨)
+  if (difficulty) {
+    return aggregateWeekFromRecords(records, weekKey, difficulty)
+  }
+  const stored = await loadWeekEntriesRaw(weekKey)
   return mergeWeekEntries(stored, aggregateWeekFromRecords(records, weekKey))
 }
 
@@ -538,37 +572,40 @@ function rankWeekEntries(
 export async function loadWeeklyRanking(
   weekKey: string = getWeekKey(),
   mode: WeeklyRankMode = 'plays',
+  difficulty: Difficulty = 'easy',
 ): Promise<WeeklyRankEntry[]> {
-  const entries = await loadWeekEntries(weekKey)
+  const entries = await loadWeekEntries(weekKey, difficulty)
   return rankWeekEntries(entries, mode)
 }
 
-async function buildPendingForWeek(
+async function buildPendingsForWeek(
   uid: string,
   settledWeekKey: string,
   nowMs: number,
-): Promise<PendingWeekReward | null> {
+): Promise<PendingWeekReward[]> {
   const expiresAt = getClaimExpiresAt(settledWeekKey)
-  if (nowMs >= expiresAt) return null
+  if (nowMs >= expiresAt) return []
 
-  // 주간 보상은 판수 순위 기준
-  const ranked = rankWeekEntries(
-    await loadWeekEntries(settledWeekKey),
-    'plays',
-  )
-  const mine = ranked.find((e) => e.uid === uid)
-  if (!mine) return null
-
-  const xp = rewardXpForRank(mine.rank)
-  if (xp <= 0) return null
-
-  return {
-    weekKey: settledWeekKey,
-    rank: mine.rank,
-    xp,
-    claimed: false,
-    expiresAt,
+  const out: PendingWeekReward[] = []
+  for (const difficulty of ['easy', 'hard'] as const) {
+    const ranked = rankWeekEntries(
+      await loadWeekEntries(settledWeekKey, difficulty),
+      'plays',
+    )
+    const mine = ranked.find((e) => e.uid === uid)
+    if (!mine) continue
+    const xp = rewardXpForRank(mine.rank)
+    if (xp <= 0) continue
+    out.push({
+      weekKey: settledWeekKey,
+      rank: mine.rank,
+      xp,
+      claimed: false,
+      expiresAt,
+      difficulty,
+    })
   }
+  return out
 }
 
 /**
@@ -578,9 +615,11 @@ async function buildPendingForWeek(
 export async function syncWeekProgress(
   uid: string,
   nickname: string,
+  opts: { reconcileFromRecords?: boolean } = {},
 ): Promise<UserProgress> {
   if (!isFirebaseConfigured()) return emptyProgress()
 
+  const reconcileFromRecords = opts.reconcileFromRecords !== false
   const ref = doc(getDb(), USERS, uid)
   const snap = await getDoc(ref)
   const data = (snap.exists() ? snap.data() : {}) as Record<string, unknown>
@@ -589,21 +628,26 @@ export async function syncWeekProgress(
   const currentWeek = getWeekKey(now)
   let changed = false
 
-  if (isRewardExpired(progress.pendingWeekReward, now)) {
-    progress = { ...progress, pendingWeekReward: null }
+  const pruned = pruneWeekRewards(progress.pendingWeekRewards, now)
+  if (pruned.length !== progress.pendingWeekRewards.length) {
+    progress = { ...progress, pendingWeekRewards: pruned }
     changed = true
   }
 
   if (progress.weekKey !== currentWeek) {
     const prevKey = progress.weekKey
     const participated = progress.weekPlays > 0 || progress.weekXp > 0
-    let pending = progress.pendingWeekReward
+    let rewards = [...progress.pendingWeekRewards]
 
     if (participated && prevKey) {
-      const hasForPrev = pending?.weekKey === prevKey
-      if (!hasForPrev && !isRewardClaimable(pending, now)) {
-        const built = await buildPendingForWeek(uid, prevKey, now)
-        if (built) pending = built
+      const hasForPrev = rewards.some(
+        (r) => r.weekKey === prevKey && !r.claimed && !isRewardExpired(r, now),
+      )
+      if (!hasForPrev) {
+        const built = await buildPendingsForWeek(uid, prevKey, now)
+        if (built.length > 0) {
+          rewards = pruneWeekRewards([...rewards, ...built], now)
+        }
       }
     }
 
@@ -615,56 +659,58 @@ export async function syncWeekProgress(
       weekPlays: 0,
       weekBestAttempts: 0,
       weekBestSeconds: 0,
-      pendingWeekReward: pending,
+      pendingWeekRewards: rewards,
       level: levelFromTotalXp(progress.xp),
     }
     changed = true
   }
 
-  try {
-    const fromRecords = aggregateWeekFromRecords(
-      await fetchPracticeRecords(),
-      currentWeek,
-    ).find((e) => e.uid === uid)
-    if (
-      fromRecords &&
-      (fromRecords.weekPlays > progress.weekPlays ||
-        fromRecords.weekXp > progress.weekXp)
-    ) {
-      progress = {
-        ...progress,
-        weekKey: currentWeek,
-        weekXp: Math.max(progress.weekXp, fromRecords.weekXp),
-        weekWins: Math.max(progress.weekWins, fromRecords.weekWins),
-        weekPlays: Math.max(progress.weekPlays, fromRecords.weekPlays),
-        weekBestAttempts: mergeBest(
-          progress.weekBestAttempts,
-          fromRecords.weekBestAttempts,
-        ),
-        weekBestSeconds: mergeBest(
-          progress.weekBestSeconds,
-          fromRecords.weekBestSeconds,
-        ),
+  if (reconcileFromRecords) {
+    try {
+      const fromRecords = aggregateWeekFromRecords(
+        await fetchPracticeRecords(),
+        currentWeek,
+      ).find((e) => e.uid === uid)
+      if (
+        fromRecords &&
+        (fromRecords.weekPlays > progress.weekPlays ||
+          fromRecords.weekXp > progress.weekXp)
+      ) {
+        progress = {
+          ...progress,
+          weekKey: currentWeek,
+          weekXp: Math.max(progress.weekXp, fromRecords.weekXp),
+          weekWins: Math.max(progress.weekWins, fromRecords.weekWins),
+          weekPlays: Math.max(progress.weekPlays, fromRecords.weekPlays),
+          weekBestAttempts: mergeBest(
+            progress.weekBestAttempts,
+            fromRecords.weekBestAttempts,
+          ),
+          weekBestSeconds: mergeBest(
+            progress.weekBestSeconds,
+            fromRecords.weekBestSeconds,
+          ),
+        }
+        changed = true
+        await writeWeeklyEntry(currentWeek, uid, nickname, {
+          weekXp: progress.weekXp,
+          weekWins: progress.weekWins,
+          weekPlays: progress.weekPlays,
+          weekBestAttempts: progress.weekBestAttempts,
+          weekBestSeconds: progress.weekBestSeconds,
+        })
+      } else if (progress.weekPlays > 0 || progress.weekXp > 0) {
+        await writeWeeklyEntry(currentWeek, uid, nickname, {
+          weekXp: progress.weekXp,
+          weekWins: progress.weekWins,
+          weekPlays: progress.weekPlays,
+          weekBestAttempts: progress.weekBestAttempts,
+          weekBestSeconds: progress.weekBestSeconds,
+        })
       }
-      changed = true
-      await writeWeeklyEntry(currentWeek, uid, nickname, {
-        weekXp: progress.weekXp,
-        weekWins: progress.weekWins,
-        weekPlays: progress.weekPlays,
-        weekBestAttempts: progress.weekBestAttempts,
-        weekBestSeconds: progress.weekBestSeconds,
-      })
-    } else if (progress.weekPlays > 0 || progress.weekXp > 0) {
-      await writeWeeklyEntry(currentWeek, uid, nickname, {
-        weekXp: progress.weekXp,
-        weekWins: progress.weekWins,
-        weekPlays: progress.weekPlays,
-        weekBestAttempts: progress.weekBestAttempts,
-        weekBestSeconds: progress.weekBestSeconds,
-      })
+    } catch {
+      /* 기록 집계 실패해도 동기화는 계속 */
     }
-  } catch {
-    /* 기록 집계 실패해도 동기화는 계속 */
   }
 
   if (changed) {
@@ -799,6 +845,7 @@ export async function awardMatchXp(
 export async function claimWeekReward(
   uid: string,
   nickname: string,
+  target?: PendingWeekReward,
 ): Promise<{ progress: UserProgress; gained: number } | null> {
   if (!isFirebaseConfigured()) return null
 
@@ -809,23 +856,49 @@ export async function claimWeekReward(
   let progress = parseUserProgress(data)
   const now = Date.now()
 
-  if (isRewardExpired(progress.pendingWeekReward, now)) {
-    await updateDoc(ref, { pendingWeekReward: null })
+  const rewards = pruneWeekRewards(progress.pendingWeekRewards, now)
+  const pending = target
+    ? (rewards.find(
+        (r) =>
+          r.weekKey === target.weekKey &&
+          (r.difficulty ?? null) === (target.difficulty ?? null) &&
+          r.rank === target.rank &&
+          isRewardClaimable(r, now),
+      ) ?? null)
+    : firstClaimableReward(rewards, now)
+
+  if (!pending || !isRewardClaimable(pending, now)) {
+    if (rewards.length !== progress.pendingWeekRewards.length) {
+      await setDoc(
+        ref,
+        {
+          pendingWeekRewards: rewards,
+          pendingWeekReward: firstClaimableReward(rewards, now),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+    }
     return null
   }
-  if (!isRewardClaimable(progress.pendingWeekReward, now)) return null
 
-  const pending = progress.pendingWeekReward!
   const gained = pending.xp
   const xp = progress.xp + gained
   const level = levelFromTotalXp(xp)
-  const claimed: PendingWeekReward = { ...pending, claimed: true }
+  const nextRewards = rewards.map((r) =>
+    r.weekKey === pending.weekKey &&
+    (r.difficulty ?? null) === (pending.difficulty ?? null) &&
+    r.rank === pending.rank &&
+    !r.claimed
+      ? { ...r, claimed: true }
+      : r,
+  )
 
   progress = {
     ...progress,
     xp,
     level,
-    pendingWeekReward: claimed,
+    pendingWeekRewards: nextRewards,
   }
 
   await setDoc(
@@ -834,7 +907,8 @@ export async function claimWeekReward(
       nickname: nickname.slice(0, 20),
       xp,
       level,
-      pendingWeekReward: claimed,
+      pendingWeekRewards: nextRewards,
+      pendingWeekReward: firstClaimableReward(nextRewards, now),
       updatedAt: serverTimestamp(),
     },
     { merge: true },

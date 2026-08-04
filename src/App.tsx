@@ -217,24 +217,12 @@ function App() {
           ? '메인게임'
           : null
 
-  if (game.dictError) {
+  if (game.dictError && !game.needMode) {
     return (
       <div className="app" data-theme={themeAttr}>
         <div className="boot-card">
           <h1>사전을 불러오지 못했어요</h1>
           <p>{game.dictError}</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!game.dictReady) {
-    return (
-      <div className="app" data-theme={themeAttr}>
-        <div className="boot-card">
-          <div className="boot-spinner" aria-hidden />
-          <h1>사전 불러오는 중</h1>
-          <p>단어를 준비하고 있어요</p>
         </div>
       </div>
     )
@@ -476,16 +464,9 @@ function App() {
             onBack={() => setModePickerOpen(false)}
             onSelect={(mode, difficulty) => {
               setModePickerOpen(false)
-              game.startGame(mode, difficulty)
+              void game.startGame(mode, difficulty)
             }}
           />
-        ) : !auth.ready ? (
-          <div className="home-dash home-dash-loading" aria-busy="true">
-            <div className="home-dash-hero">
-              <h2 className="home-hero-title">푸들푸들</h2>
-              <p className="home-hero-sub">불러오는 중…</p>
-            </div>
-          </div>
         ) : (
           <>
             <HomeDashboard
@@ -503,8 +484,6 @@ function App() {
                     }
                   : undefined
               }
-              onClaimReward={auth.user ? auth.claimReward : undefined}
-              claimBusy={auth.busy}
             />
             <div className="home-start-bar">
               <button

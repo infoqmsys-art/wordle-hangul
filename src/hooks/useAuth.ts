@@ -11,7 +11,7 @@ import {
   type UserProfile,
 } from '../lib/auth'
 import { buyShopItem, buyTheme, consumeHint, equipTheme, syncEconomy } from '../lib/economy'
-import { getWeekKey } from '../lib/levels'
+import { getWeekKey, type PendingWeekReward } from '../lib/levels'
 import { claimMailItem } from '../lib/mailbox'
 import { claimWeekReward, type UserProgress } from '../lib/progress'
 
@@ -111,25 +111,28 @@ export function useAuth() {
     }
   }, [])
 
-  const claimReward = useCallback(async () => {
-    if (!user) return null
-    setBusy(true)
-    setError(null)
-    try {
-      const result = await claimWeekReward(user.uid, user.nickname)
-      if (!result) {
-        setError('받을 보상이 없어요')
+  const claimReward = useCallback(
+    async (target?: PendingWeekReward) => {
+      if (!user) return null
+      setBusy(true)
+      setError(null)
+      try {
+        const result = await claimWeekReward(user.uid, user.nickname, target)
+        if (!result) {
+          setError('받을 보상이 없어요')
+          return null
+        }
+        setUser(applyProgressToProfile(user, result.progress))
+        return result
+      } catch {
+        setError('보상 수령에 실패했어요')
         return null
+      } finally {
+        setBusy(false)
       }
-      setUser(applyProgressToProfile(user, result.progress))
-      return result
-    } catch {
-      setError('보상 수령에 실패했어요')
-      return null
-    } finally {
-      setBusy(false)
-    }
-  }, [user])
+    },
+    [user],
+  )
 
   const refreshEconomy = useCallback(async () => {
     if (!user) return

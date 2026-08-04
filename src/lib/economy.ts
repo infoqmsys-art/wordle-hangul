@@ -92,12 +92,13 @@ export function applyDailyEconomyGrant(progress: UserProgress): {
 export async function syncEconomy(
   uid: string,
   nickname: string,
+  opts: { reconcileFromRecords?: boolean } = {},
 ): Promise<{ progress: UserProgress; grantedHints: number }> {
   if (!isFirebaseConfigured()) {
     return { progress: parseUserProgress({}), grantedHints: 0 }
   }
 
-  await syncWeekProgress(uid, nickname)
+  await syncWeekProgress(uid, nickname, opts)
   const ref = doc(getDb(), USERS, uid)
   const snap = await getDoc(ref)
   const data = (snap.exists() ? snap.data() : {}) as Record<string, unknown>

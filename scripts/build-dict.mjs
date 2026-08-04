@@ -3,6 +3,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { ALL_NOUNS, COMMON_NOUNS } from 'pd-korean-noun-list-for-wordles'
 
@@ -239,10 +240,40 @@ fs.writeFileSync(
 // 하위 호환
 fs.writeFileSync(path.join(outDir, 'answers.json'), JSON.stringify(answers5Out), 'utf8')
 
+const sizes = {
+  guesses: fs.statSync(path.join(outDir, 'guesses.json')).size,
+  answers5: fs.statSync(path.join(outDir, 'answers-5.json')).size,
+  answers7: fs.statSync(path.join(outDir, 'answers-7.json')).size,
+  definitions: fs.statSync(path.join(outDir, 'definitions.json')).size,
+}
+const version = createHash('sha1')
+  .update(JSON.stringify(guesses))
+  .update(JSON.stringify(answers5Out))
+  .update(JSON.stringify(answers7Out))
+  .update(JSON.stringify(definitions))
+  .digest('hex')
+  .slice(0, 16)
+fs.writeFileSync(
+  path.join(outDir, 'meta.json'),
+  JSON.stringify({
+    version,
+    generatedAt: new Date().toISOString(),
+    counts: {
+      guesses: Object.keys(guesses).length,
+      answers5: answers5Out.length,
+      answers7: answers7Out.length,
+      definitions: Object.keys(definitions).length,
+    },
+    bytes: sizes,
+  }),
+  'utf8',
+)
+
 const defCount = Object.keys(definitions).length
-console.log(`guesses: ${Object.keys(guesses).length}`)
-console.log(`answers-5: ${answers5Out.length}`)
-console.log(`answers-7: ${answers7Out.length}`)
-console.log(`definitions: ${defCount}`)
+console.log(`guesses: ${Object.keys(guesses).length} (${(sizes.guesses / 1024).toFixed(1)} KB)`)
+console.log(`answers-5: ${answers5Out.length} (${(sizes.answers5 / 1024).toFixed(1)} KB)`)
+console.log(`answers-7: ${answers7Out.length} (${(sizes.answers7 / 1024).toFixed(1)} KB)`)
+console.log(`definitions: ${defCount} (${(sizes.definitions / 1024).toFixed(1)} KB)`)
+console.log(`dict version: ${version}`)
 console.log(`sample5: ${answers5Out.slice(0, 8).map((a) => a.word).join(', ')}`)
 console.log(`sample7: ${answers7Out.slice(0, 8).map((a) => a.word).join(', ')}`)
