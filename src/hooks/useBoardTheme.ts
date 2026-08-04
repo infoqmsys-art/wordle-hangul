@@ -5,6 +5,7 @@ import {
   canUseTheme,
   clearThemeTrial,
   consumeThemeTrialGame,
+  endThemeTrial,
   getActiveTrial,
   isBoardThemeId,
   loadEquippedTheme,
@@ -13,40 +14,39 @@ import {
   saveEquippedTheme,
   startThemeTrial,
   trialGamesLeft,
+  type ActiveThemeTrial,
   type BoardThemeId,
-  type ThemeTrial,
   type ThemeTrialStore,
 } from '../lib/themes'
 
 type Options = {
-  /** 로그인 uid 또는 guest — 로컬 장착/체험 격리 */
   accountKey?: string
   ownedThemeIds?: readonly string[]
   equippedFromCloud?: string | null
 }
 
-/**
- * 계정 진입 시에만 클라우드/로컬을 한 번 맞춘다.
- * 이후 세션에서는 로컬 장착이 소스 오브 트루스 (힌트·XP 동기화에 안 덮임).
- */
 function resolveForAccount(
   accountKey: string,
   ownedThemeIds: readonly string[],
   equippedFromCloud: string | null | undefined,
 ): { equippedId: BoardThemeId; store: ThemeTrialStore } {
   const store = loadTrialStore(accountKey)
-  const local = loadEquippedTheme(accountKey)
-  const cloud =
-    equippedFromCloud && isBoardThemeId(equippedFromCloud)
-      ? equippedFromCloud
-      : null
+  const active = getActiveTrial(store)
+  // 체험 중이면 무조건 체험 테마
+  if (active) {
+    saveEquippedTheme(active.themeId, accountKey)
+    return { equippedId: active.themeId, store }
+  }
 
-  // 로컬이 쓸 수 있으면 우선 (체험·보유 장착 유지)
+  const local = loadEquippedTheme(accountKey)
   if (canUseTheme(local, ownedThemeIds, store)) {
     return { equippedId: local, store }
   }
 
-  // 로컬이 막혔을 때만 클라우드
+  const cloud =
+    equippedFromCloud && isBoardThemeId(equippedFromCloud)
+      ? equippedFromCloud
+      : null
   if (cloud && canUseTheme(cloud, ownedThemeIds, store)) {
     saveEquippedTheme(cloud, accountKey)
     return { equippedId: cloud, store }
@@ -73,7 +73,6 @@ export function useBoardTheme(options: Options = {}) {
   const accountRef = useRef(accountKey)
   const ownedKey = ownedThemeIds.slice().sort().join(',')
 
-  // 계정 전환 시에만 리셋 (owned/cloud 참조 변경으로는 절대 덮지 않음)
   useEffect(() => {
     if (accountRef.current === accountKey) return
     accountRef.current = accountKey
@@ -84,11 +83,19 @@ export function useBoardTheme(options: Options = {}) {
     )
     setTrialStore(next.store)
     setEquippedIdState(next.equippedId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 계정 키가 바뀔 때만
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountKey])
 
-  // 보유 목록이 늘어난 뒤(구매)에도 현재 장착이 유효한지만 검사
+  // 체험 중이면 장착 강제 / 보유 변경 후에도 유효성만 맞춤
   useEffect(() => {
+    const active = getActiveTrial(trialStore)
+    if (active) {
+      if (equippedId !== active.themeId) {
+        setEquippedIdState(active.themeId)
+        saveEquippedTheme(active.themeId, accountKey)
+      }
+      return
+    }
     if (!canUseTheme(equippedId, ownedThemeIds, trialStore)) {
       const fallback = resolveForAccount(
         accountKey,
@@ -97,22 +104,24 @@ export function useBoardTheme(options: Options = {}) {
       )
       setEquippedIdState(fallback.equippedId)
     }
-    // ownedKey로 배열 참조  thrash 방지
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountKey, equippedId, ownedKey, trialStore])
+
+  const trial: ActiveThemeTrial | null = useMemo(
+    () => getActiveTrial(trialStore),
+    [trialStore],
+  )
+  const trialLocked = Boolean(trial)
 
   const themeId = useMemo(
     () => resolveActiveTheme(equippedId, ownedThemeIds, trialStore),
     [equippedId, ownedThemeIds, trialStore],
   )
 
-  const trial: ThemeTrial | null = useMemo(() => {
-    if (ownedThemeIds.includes(equippedId)) return null
-    return getActiveTrial(trialStore, equippedId)
-  }, [equippedId, ownedThemeIds, trialStore])
-
   const setEquippedId = useCallback(
     (id: BoardThemeId) => {
+      const store = loadTrialStore(accountKey)
+      if (getActiveTrial(store)) return // 체험 중 장착 변경 불가
       setEquippedIdState(id)
       saveEquippedTheme(id, accountKey)
     },
@@ -121,52 +130,58 @@ export function useBoardTheme(options: Options = {}) {
 
   const equipLocal = useCallback(
     (id: BoardThemeId) => {
+      if (getActiveTrial(loadTrialStore(accountKey))) return false
       if (!canUseTheme(id, ownedThemeIds, trialStore)) return false
       setEquippedId(id)
       return true
     },
-    [ownedThemeIds, setEquippedId, trialStore],
+    [accountKey, ownedThemeIds, setEquippedId, trialStore],
   )
 
   const startTrial = useCallback(
     (id: BoardThemeId) => {
-      if (!canStartThemeTrial(id, loadTrialStore(accountKey), ownedThemeIds)) {
-        return null
-      }
-      const next = startThemeTrial(id, accountKey)
+      const store = loadTrialStore(accountKey)
+      if (!canStartThemeTrial(id, store, ownedThemeIds)) return null
+
+      const current = loadEquippedTheme(accountKey)
+      const restoreId =
+        ownedThemeIds.includes(current) || current === DEFAULT_THEME
+          ? current
+          : DEFAULT_THEME
+
+      const next = startThemeTrial(id, accountKey, restoreId)
       if (!next) return null
       setTrialStore(loadTrialStore(accountKey))
-      setEquippedId(id)
+      setEquippedIdState(id)
       return next
     },
-    [accountKey, ownedThemeIds, setEquippedId],
+    [accountKey, ownedThemeIds],
   )
 
   const consumeTrialGame = useCallback(() => {
-    const equipped = loadEquippedTheme(accountKey)
-    const before = loadTrialStore(accountKey)
-    if (trialGamesLeft(before, equipped) <= 0) return
-    if (ownedThemeIds.includes(equipped)) return
-
-    consumeThemeTrialGame(accountKey, equipped, ownedThemeIds)
+    if (!getActiveTrial(loadTrialStore(accountKey))) return
+    const next = consumeThemeTrialGame(accountKey)
     const after = loadTrialStore(accountKey)
     setTrialStore(after)
-
-    if (trialGamesLeft(after, equipped) <= 0) {
-      setEquippedIdState((prev) => {
-        if (prev === equipped && !ownedThemeIds.includes(prev)) {
-          saveEquippedTheme(DEFAULT_THEME, accountKey)
-          return DEFAULT_THEME
-        }
-        return prev
-      })
+    if (!next) {
+      // 3판 끝 → restore 장착
+      const restored = loadEquippedTheme(accountKey)
+      setEquippedIdState(restored)
+    } else {
+      setEquippedIdState(next.themeId)
     }
-  }, [accountKey, ownedThemeIds])
+  }, [accountKey])
 
   const endTrial = useCallback(
     (themeId?: BoardThemeId) => {
-      clearThemeTrial(accountKey, themeId)
-      setTrialStore(loadTrialStore(accountKey))
+      if (themeId) {
+        clearThemeTrial(accountKey, themeId)
+      } else {
+        endThemeTrial(accountKey, { markUsed: false })
+      }
+      const after = loadTrialStore(accountKey)
+      setTrialStore(after)
+      setEquippedIdState(loadEquippedTheme(accountKey))
     },
     [accountKey],
   )
@@ -185,12 +200,12 @@ export function useBoardTheme(options: Options = {}) {
     themeId,
     equippedId,
     trial,
+    trialLocked,
     trialStore,
     trialGamesLeft: trial?.gamesLeft ?? 0,
     gamesLeftFor,
     canTrial,
     equipLocal,
-    /** 미리보기는 상점 미니카드만 — 앱 전역 테마는 바꾸지 않음 */
     preview: (_id: BoardThemeId | null) => {},
     startTrial,
     consumeTrialGame,

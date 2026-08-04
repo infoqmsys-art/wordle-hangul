@@ -316,12 +316,15 @@ function App() {
         busy: auth.busy,
         error: auth.error,
         trialStore: boardTheme.trialStore,
+        trial: boardTheme.trial,
+        trialLocked: boardTheme.trialLocked,
         gamesLeftFor: boardTheme.gamesLeftFor,
         canTrial: boardTheme.canTrial,
         onPreview: () => {},
         onEquip: async (id) => {
+          if (boardTheme.trialLocked) return
           const owned = auth.user?.ownedThemeIds ?? []
-          // 보유 테마만 클라우드 장착. 체험 테마는 로컬 장착
+          // 보유 테마만 클라우드 장착
           if (auth.user && owned.includes(id)) {
             const ok = await auth.wearTheme(id)
             if (ok) boardTheme.setEquippedId(id)

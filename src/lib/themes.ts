@@ -64,28 +64,33 @@ export const BOARD_THEMES: BoardTheme[] = [
 ]
 
 export const DEFAULT_THEME: BoardThemeId = 'default'
-/** 비로그인·폴백용 안정 참조 (매 렌더 새 배열 만들지 않기) */
 export const DEFAULT_OWNED_THEME_IDS: readonly BoardThemeId[] = [DEFAULT_THEME]
 
 const EQUIP_KEY = 'wordle-hangul-board-theme'
-/** v3: 계정별·테마별 체험. 오류 패치로 v2는 버리고 초기화 */
-const TRIAL_KEY = 'wordle-hangul-theme-trial-v3'
+/** v4: 한 번에 하나의 강제 3판 체험 */
+const TRIAL_KEY = 'wordle-hangul-theme-trial-v4'
 const LEGACY_TRIAL_KEYS = [
+  'wordle-hangul-theme-trial-v3',
   'wordle-hangul-theme-trial-v2',
   'wordle-hangul-theme-trial',
 ]
 
-/** UI용 요약 (특정 테마의 남은 체험 판수) */
-export type ThemeTrial = {
+/** 진행 중인 강제 체험 */
+export type ActiveThemeTrial = {
   themeId: BoardThemeId
   gamesLeft: number
+  /** 3판 끝나면 돌아갈 장착 (보유/기본) */
+  restoreId: BoardThemeId
 }
 
-/** 계정별 체험 저장 — 테마마다 독립 */
 export type ThemeTrialStore = {
-  /** themeId → 남은 판수. 없음=미시작(시작 가능), 0=소진 */
-  remaining: Partial<Record<BoardThemeId, number>>
+  active: ActiveThemeTrial | null
+  /** 이미 3판 체험을 마친 테마 (재체험 불가) */
+  used: BoardThemeId[]
 }
+
+/** @deprecated UI 호환용 별칭 */
+export type ThemeTrial = ActiveThemeTrial
 
 function accountStorageKey(base: string, accountKey: string): string {
   return `${base}:${accountKey || 'guest'}`
@@ -151,7 +156,7 @@ function wipeLegacyTrialKeys(accountKey: string) {
 }
 
 export function emptyTrialStore(): ThemeTrialStore {
-  return { remaining: {} }
+  return { active: null, used: [] }
 }
 
 export function loadTrialStore(accountKey = 'guest'): ThemeTrialStore {
@@ -159,16 +164,34 @@ export function loadTrialStore(accountKey = 'guest'): ThemeTrialStore {
   try {
     const raw = localStorage.getItem(accountStorageKey(TRIAL_KEY, accountKey))
     if (!raw) return emptyTrialStore()
-    const data = JSON.parse(raw) as ThemeTrialStore
-    const remaining: ThemeTrialStore['remaining'] = {}
-    if (data && typeof data.remaining === 'object' && data.remaining) {
-      for (const [id, left] of Object.entries(data.remaining)) {
-        if (!isBoardThemeId(id)) continue
-        const n = Math.floor(Number(left))
-        if (Number.isFinite(n) && n >= 0) remaining[id] = n
+    const data = JSON.parse(raw) as Partial<ThemeTrialStore>
+    const used: BoardThemeId[] = []
+    if (Array.isArray(data.used)) {
+      for (const id of data.used) {
+        if (typeof id === 'string' && isBoardThemeId(id) && !used.includes(id)) {
+          used.push(id)
+        }
       }
     }
-    return { remaining }
+    let active: ActiveThemeTrial | null = null
+    const a = data.active
+    if (
+      a &&
+      isBoardThemeId(String(a.themeId)) &&
+      isBoardThemeId(String(a.restoreId ?? DEFAULT_THEME))
+    ) {
+      const gamesLeft = Math.floor(Number(a.gamesLeft ?? 0))
+      if (gamesLeft > 0) {
+        active = {
+          themeId: a.themeId as BoardThemeId,
+          gamesLeft,
+          restoreId: (a.restoreId as BoardThemeId) || DEFAULT_THEME,
+        }
+      } else if (!used.includes(a.themeId as BoardThemeId)) {
+        used.push(a.themeId as BoardThemeId)
+      }
+    }
+    return { active, used }
   } catch {
     return emptyTrialStore()
   }
@@ -185,14 +208,29 @@ export function saveTrialStore(store: ThemeTrialStore, accountKey = 'guest') {
   }
 }
 
-export function trialGamesLeft(
-  store: ThemeTrialStore,
-  themeId: BoardThemeId,
-): number {
-  return Math.max(0, Math.floor(Number(store.remaining[themeId] ?? 0)))
+export function getActiveTrial(store: ThemeTrialStore): ActiveThemeTrial | null {
+  if (!store.active || store.active.gamesLeft <= 0) return null
+  return store.active
 }
 
-/** 아직 시작 안 했거나 진행 중이면 true. 0(소진)이면 false */
+export function trialGamesLeft(
+  store: ThemeTrialStore,
+  themeId?: BoardThemeId,
+): number {
+  const active = getActiveTrial(store)
+  if (!active) return 0
+  if (themeId && active.themeId !== themeId) return 0
+  return active.gamesLeft
+}
+
+export function isThemeTrialUsed(
+  store: ThemeTrialStore,
+  themeId: BoardThemeId,
+): boolean {
+  return store.used.includes(themeId)
+}
+
+/** 새 체험 시작 가능 여부 (다른 체험 중·이미 사용·보유면 불가) */
 export function canStartThemeTrial(
   themeId: BoardThemeId,
   store: ThemeTrialStore,
@@ -200,76 +238,106 @@ export function canStartThemeTrial(
 ): boolean {
   if (themeId === DEFAULT_THEME) return false
   if (ownedIds.includes(themeId)) return false
-  const left = store.remaining[themeId]
-  if (left === 0) return false
+  if (getActiveTrial(store)) return false
+  if (isThemeTrialUsed(store, themeId)) return false
   return true
 }
 
-export function getActiveTrial(
-  store: ThemeTrialStore,
-  themeId: BoardThemeId,
-): ThemeTrial | null {
-  const left = trialGamesLeft(store, themeId)
-  if (left <= 0) return null
-  return { themeId, gamesLeft: left }
-}
-
-/** 테마별 체험 시작(또는 이어하기). 소진된 테마는 null */
+/**
+ * 강제 3판 체험 시작.
+ * restoreId = 체험 전 장착(보유 테마만, 아니면 기본)
+ */
 export function startThemeTrial(
   themeId: BoardThemeId,
   accountKey = 'guest',
-): ThemeTrial | null {
-  if (themeId === DEFAULT_THEME) return null
+  restoreId: BoardThemeId = DEFAULT_THEME,
+): ActiveThemeTrial | null {
   const store = loadTrialStore(accountKey)
-  const cur = store.remaining[themeId]
-  if (cur === 0) return null
-  if (cur == null) {
-    store.remaining[themeId] = THEME_TRIAL_GAMES
-    saveTrialStore(store, accountKey)
-    return { themeId, gamesLeft: THEME_TRIAL_GAMES }
+  if (themeId === DEFAULT_THEME) return null
+  if (getActiveTrial(store)) return null
+  if (store.used.includes(themeId)) return null
+
+  const restore =
+    restoreId !== themeId && isBoardThemeId(restoreId)
+      ? restoreId
+      : DEFAULT_THEME
+
+  const active: ActiveThemeTrial = {
+    themeId,
+    gamesLeft: THEME_TRIAL_GAMES,
+    restoreId: restore,
   }
-  return { themeId, gamesLeft: cur }
+  saveTrialStore({ ...store, active }, accountKey)
+  saveEquippedTheme(themeId, accountKey)
+  return active
 }
 
-/** 특정 테마 체험 제거(구매 시). 없으면 전체 스토어 유지 */
+/** 체험 종료 후 restore 장착 반환. themeId 지정 시 해당 활성만 해제 */
+export function endThemeTrial(
+  accountKey = 'guest',
+  opts: { markUsed?: boolean; themeId?: BoardThemeId } = {},
+): BoardThemeId {
+  const store = loadTrialStore(accountKey)
+  const active = store.active
+  if (!active) return loadEquippedTheme(accountKey)
+  if (opts.themeId && active.themeId !== opts.themeId) {
+    return loadEquippedTheme(accountKey)
+  }
+
+  const used = [...store.used]
+  if (opts.markUsed !== false && !used.includes(active.themeId)) {
+    used.push(active.themeId)
+  }
+  const restoreId =
+    active.restoreId === active.themeId ? DEFAULT_THEME : active.restoreId
+  saveTrialStore({ active: null, used }, accountKey)
+  saveEquippedTheme(restoreId, accountKey)
+  return restoreId
+}
+
+/** 구매로 체험 종료 — used 표시 없이 구매 테마 유지 */
 export function clearThemeTrial(
   accountKey = 'guest',
   themeId?: BoardThemeId,
 ) {
   const store = loadTrialStore(accountKey)
-  if (themeId) {
-    delete store.remaining[themeId]
-    saveTrialStore(store, accountKey)
+  if (!store.active) return
+  if (themeId && store.active.themeId !== themeId) {
+    // 다른 테마 구매: 진행 중 체험은 복귀 후 유지
+    if (getActiveTrial(store)) {
+      endThemeTrial(accountKey, { markUsed: false })
+    }
     return
   }
-  try {
-    localStorage.removeItem(accountStorageKey(TRIAL_KEY, accountKey))
-  } catch {
-    /* ignore */
-  }
+  // 체험 중이던 테마를 사면 used로 넣고 체험만 끝냄 (장착은 호출측에서)
+  const used = [...store.used]
+  if (!used.includes(store.active.themeId)) used.push(store.active.themeId)
+  saveTrialStore({ active: null, used }, accountKey)
 }
 
 /**
- * 한 판 종료 시 장착 중인 체험 테마만 1판 차감.
- * owned면 차감 안 함. 반환 = 해당 테마 남은 체험(없으면 null)
+ * 한 판 종료 → 체험 1판 차감.
+ * 0이 되면 자동 복귀하고 restoreId를 equipped에 저장.
+ * 반환: 남은 체험(없으면 null)
  */
 export function consumeThemeTrialGame(
   accountKey = 'guest',
-  equippedThemeId: BoardThemeId,
-  ownedIds: readonly string[] = [],
-): ThemeTrial | null {
-  if (equippedThemeId === DEFAULT_THEME) return null
-  if (ownedIds.includes(equippedThemeId)) return null
-
+): ActiveThemeTrial | null {
   const store = loadTrialStore(accountKey)
-  const left = store.remaining[equippedThemeId]
-  if (left == null || left <= 0) return null
+  const active = getActiveTrial(store)
+  if (!active) return null
 
-  const nextLeft = left - 1
-  store.remaining[equippedThemeId] = nextLeft
-  saveTrialStore(store, accountKey)
-  if (nextLeft <= 0) return null
-  return { themeId: equippedThemeId, gamesLeft: nextLeft }
+  const nextLeft = active.gamesLeft - 1
+  if (nextLeft <= 0) {
+    endThemeTrial(accountKey, { markUsed: true })
+    return null
+  }
+
+  const next: ActiveThemeTrial = { ...active, gamesLeft: nextLeft }
+  saveTrialStore({ ...store, active: next }, accountKey)
+  // 체험 중엔 항상 체험 테마 강제
+  saveEquippedTheme(active.themeId, accountKey)
+  return next
 }
 
 export function canUseTheme(
@@ -279,15 +347,19 @@ export function canUseTheme(
 ): boolean {
   if (themeId === DEFAULT_THEME) return true
   if (ownedIds.includes(themeId)) return true
-  if (store && trialGamesLeft(store, themeId) > 0) return true
+  const active = store ? getActiveTrial(store) : null
+  if (active && active.themeId === themeId) return true
   return false
 }
 
+/** 체험 중이면 무조건 체험 테마 */
 export function resolveActiveTheme(
   equipped: BoardThemeId,
   ownedIds: readonly string[],
   store: ThemeTrialStore | null,
 ): BoardThemeId {
+  const active = store ? getActiveTrial(store) : null
+  if (active) return active.themeId
   if (canUseTheme(equipped, ownedIds, store)) return equipped
   return DEFAULT_THEME
 }

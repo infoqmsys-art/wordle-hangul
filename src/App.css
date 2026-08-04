@@ -3318,7 +3318,6 @@ button.tile {
   background: transparent;
   font: inherit;
   text-align: left;
-  cursor: pointer;
   color: var(--ink);
 }
 
