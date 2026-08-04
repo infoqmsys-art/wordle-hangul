@@ -62,19 +62,19 @@ export function ThemeShopPanel({
   void onPreview
   void gamesLeftFor
   const active = trial ?? getActiveTrial(trialStore)
+  const trialName = active
+    ? (getBoardTheme(active.themeId)?.name ?? active.themeId)
+    : ''
 
   return (
     <div className="theme-shop-panel">
-      <p className="modal-sub theme-shop-sub">
-        유료 테마는 테마마다 {THEME_TRIAL_GAMES}판 체험할 수 있어요. 체험을
-        누르면 {THEME_TRIAL_GAMES}판을 마치고 원래 테마로 돌아와요. 마음에
-        들면 구매하세요.
-      </p>
-
-      {active && (
+      {active ? (
         <p className="theme-trial-banner">
-          {getBoardTheme(active.themeId)?.name ?? active.themeId} 체험 중 ·
-          남은 {active.gamesLeft}판 · 끝날 때까지 테마 고정
+          {trialName} 체험 · 남은 {active.gamesLeft}판
+        </p>
+      ) : (
+        <p className="theme-shop-hint">
+          테마마다 {THEME_TRIAL_GAMES}판 체험 → 끝나면 원래 테마로 복귀
         </p>
       )}
 
@@ -86,9 +86,7 @@ export function ThemeShopPanel({
             theme.tokenCost <= 0 || ownedThemeIds.includes(theme.id)
           const activeTheme = themeId === theme.id
           const equipped = equippedId === theme.id
-          const isThisTrial = Boolean(
-            active && active.themeId === theme.id,
-          )
+          const isThisTrial = Boolean(active && active.themeId === theme.id)
           const usedUp = !owned && isThemeTrialUsed(trialStore, theme.id)
           const trialAvailable = canTrial(theme.id)
 
@@ -103,17 +101,16 @@ export function ThemeShopPanel({
                   <MiniPreview themeId={theme.id} />
                   <span className="theme-item-text">
                     <strong>{theme.name}</strong>
-                    <span>{theme.description}</span>
                     <span className="theme-price">
                       {theme.tokenCost <= 0
                         ? '무료'
                         : owned
                           ? '보유'
                           : isThisTrial
-                            ? `체험 남음 ${active!.gamesLeft}판`
+                            ? `체험 ${active!.gamesLeft}/3`
                             : usedUp
                               ? '체험 완료'
-                              : `가격 : ${theme.tokenCost} 초크가루`}
+                              : `가격 : ${theme.tokenCost}`}
                     </span>
                   </span>
                 </div>
@@ -123,11 +120,7 @@ export function ThemeShopPanel({
                     <button
                       type="button"
                       className="pill-btn challenge"
-                      disabled={
-                        busy ||
-                        equipped ||
-                        trialLocked /* 체험 중엔 보유 테마도 전환 불가 */
-                      }
+                      disabled={busy || equipped || trialLocked}
                       onClick={() => void onEquip(theme.id)}
                     >
                       {trialLocked
@@ -137,25 +130,20 @@ export function ThemeShopPanel({
                           : '장착'}
                     </button>
                   ) : isThisTrial ? (
-                    <>
-                      <button type="button" className="pill-btn" disabled>
-                        체험 {active!.gamesLeft}/3
-                      </button>
-                      <button
-                        type="button"
-                        className="pill-btn challenge"
-                        disabled={busy}
-                        onClick={() => {
-                          if (!loggedIn) {
-                            onNeedLogin()
-                            return
-                          }
-                          void onBuy(theme.id)
-                        }}
-                      >
-                        {loggedIn ? '구매하고 유지' : '로그인 후 구매'}
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      className="pill-btn challenge"
+                      disabled={busy}
+                      onClick={() => {
+                        if (!loggedIn) {
+                          onNeedLogin()
+                          return
+                        }
+                        void onBuy(theme.id)
+                      }}
+                    >
+                      {loggedIn ? '구매' : '로그인 후 구매'}
+                    </button>
                   ) : (
                     <>
                       {trialAvailable && (

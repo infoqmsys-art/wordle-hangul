@@ -25,6 +25,7 @@ type Props = {
   onBuyHint: (itemId: string) => Promise<boolean>
   onRefresh?: () => Promise<void>
   onNeedLogin: () => void
+  onClearError?: () => void
   theme: ThemeShopPanelProps
 }
 
@@ -32,7 +33,7 @@ export function ShopModal({
   open,
   onClose,
   initialTab = 'hints',
-  hints,
+  hints: _hints,
   tokens,
   lastDailyHintDate,
   loggedIn,
@@ -41,29 +42,39 @@ export function ShopModal({
   onBuyHint,
   onRefresh,
   onNeedLogin,
+  onClearError,
   theme,
 }: Props) {
+  void _hints
   const [tab, setTab] = useState<ShopTab>(initialTab)
   const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const wasOpen = useRef(false)
 
-  // 상점이 열릴 때만 초기 탭 적용 (새로고침/리렌더로 힌트 탭에 끌려가지 않게)
   useEffect(() => {
     if (open && !wasOpen.current) {
       setTab(initialTab)
       setMsg(null)
       setError(null)
+      onClearError?.()
       if (loggedIn) void onRefresh?.()
     }
     wasOpen.current = open
-  }, [open, initialTab, loggedIn, onRefresh])
+  }, [open, initialTab, loggedIn, onRefresh, onClearError])
 
   if (!open) return null
 
   const close = () => {
     theme.onPreview(null)
+    onClearError?.()
     onClose()
+  }
+
+  const switchTab = (next: ShopTab) => {
+    setTab(next)
+    setMsg(null)
+    setError(null)
+    onClearError?.()
   }
 
   const todayClaimed = lastDailyHintDate === kstDateKey()
@@ -75,6 +86,7 @@ export function ShopModal({
     }
     setError(null)
     setMsg(null)
+    onClearError?.()
     const ok = await onBuyHint(item.id)
     if (ok) {
       setMsg(`${item.name} 구매 완료`)
@@ -90,7 +102,12 @@ export function ShopModal({
         aria-labelledby="shop-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="shop-title">상점</h2>
+        <div className="shop-header">
+          <h2 id="shop-title">상점</h2>
+          <p className="shop-chalk-chip" aria-label="보유 초크가루">
+            초크가루 <strong>{loggedIn ? tokens : '—'}</strong>
+          </p>
+        </div>
 
         <div
           className="rank-mode-tabs shop-tabs"
@@ -102,7 +119,7 @@ export function ShopModal({
             role="tab"
             aria-selected={tab === 'hints'}
             className={tab === 'hints' ? 'on' : ''}
-            onClick={() => setTab('hints')}
+            onClick={() => switchTab('hints')}
           >
             힌트
           </button>
@@ -111,32 +128,17 @@ export function ShopModal({
             role="tab"
             aria-selected={tab === 'themes'}
             className={tab === 'themes' ? 'on' : ''}
-            onClick={() => setTab('themes')}
+            onClick={() => switchTab('themes')}
           >
             초크백 테마
           </button>
         </div>
 
-        <div className="shop-balance">
-          <div>
-            <span>보유힌트</span>
-            <strong>{loggedIn ? hints : '—'}</strong>
-          </div>
-          <div>
-            <span>초크가루</span>
-            <strong>{loggedIn ? tokens : '—'}</strong>
-          </div>
-        </div>
-
         {tab === 'hints' ? (
-          <>
-            <p className="modal-sub">
-              초크가루로 힌트를 사고, 힌트는 계정에 쌓여요
-            </p>
-
+          <div className="shop-pane">
             {!loggedIn ? (
               <div className="shop-login-gate">
-                <p>힌트 상점은 로그인 후 이용할 수 있어요.</p>
+                <p>로그인 후 힌트를 살 수 있어요.</p>
                 <button
                   type="button"
                   className="pill-btn challenge"
@@ -150,7 +152,7 @@ export function ShopModal({
                 <div className="shop-daily">
                   <div>
                     <strong>오늘 무료 힌트</strong>
-                    <p>매일 {DAILY_FREE_HINTS}개 · 안 쓰면 쌓여요</p>
+                    <p>매일 {DAILY_FREE_HINTS}개</p>
                   </div>
                   <span
                     className={`shop-daily-badge${todayClaimed ? ' is-on' : ''}`}
@@ -164,7 +166,6 @@ export function ShopModal({
                     <li key={item.id} className="shop-item">
                       <div>
                         <strong>{item.name}</strong>
-                        <p>{item.description}</p>
                         <span className="shop-price">
                           가격 : {item.tokenCost} 초크가루
                         </span>
@@ -190,13 +191,9 @@ export function ShopModal({
                     {error || externalError || msg}
                   </p>
                 )}
-
-                <p className="shop-earn-note">
-                  초크가루: 승리 시 메인게임 +3 / 오늘의 단어 +8 · 실패해도 +1
-                </p>
               </>
             )}
-          </>
+          </div>
         ) : (
           <ThemeShopPanel {...theme} tokens={tokens} loggedIn={loggedIn} />
         )}

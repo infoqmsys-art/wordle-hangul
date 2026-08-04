@@ -307,6 +307,7 @@ function App() {
         setShopOpen(false)
         openProfile()
       }}
+      onClearError={auth.clearError}
       theme={{
         themeId: boardTheme.themeId,
         equippedId: boardTheme.equippedId,
